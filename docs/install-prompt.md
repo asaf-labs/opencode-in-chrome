@@ -18,6 +18,10 @@ An OpenCode prompt cannot guarantee installation of prerequisites without OS per
 
 This is one guided setup conversation, not a promise of completely unattended browser installation. The agent should execute available terminal steps, pause only for approval or genuinely manual work, and continue afterward.
 
+### Cleanup defaults after installation
+
+The extension [collapses inactive groups after 15 minutes](../README.md#automatic-tab-cleanup). Automatic closing/archiving after 24 hours is **off by default**; installing agents must not enable it without the user's request. The popup offers Keep, Restore, and Delete saved URL controls. Explain that archives save profile-local URLs, not unsaved forms or page state, and that browser inactivity is not OpenCode conversation archival. After updating extension code, reload it in each participating Chrome profile; this cleanup feature does not require new permissions or token rotation.
+
 ## Credential handling
 
 - The prompt never asks for a pairing token in chat.

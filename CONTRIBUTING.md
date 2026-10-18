@@ -43,3 +43,11 @@ External contributors can fork this public MIT-licensed repo, create a branch, r
 - Document behavior/installation changes in README.md and security changes in SECURITY.md.
 
 For a manual smoke test, use the public sandbox at `https://www.scrapethissite.com/`. Verify automatic tab creation, reading, form interaction, the orange agent cursor, disable/re-enable, and reconnect. Use a dedicated browser profile for testing changes.
+
+### Tab cleanup smoke test
+
+- Reload the updated extension in a disposable profile. Verify automatic archiving starts **off**, and indicator refresh/reconnection preserves a manually collapsed group.
+- Create several owned tabs concurrently in one conversation/window; verify they share one group. Personal tabs must never acquire ownership merely by being dragged into that group.
+- With the conversation inactive for 15 minutes and focus on a different tab, verify its group collapses. Groups containing active or personal tabs must remain alone.
+- Only in this disposable profile, enable 24-hour archiving and verify eligible idle tabs save URLs before closing. Active, pinned, audible, loading, and Keep tabs must remain open; disconnect/disable must not initiate cleanup. Use `node --test test/lifecycle.test.js` for deterministic clock/storage-failure cases instead of changing your system clock or production ownership records.
+- Restore a saved URL and verify it opens as an owned tab in the same profile. Delete a saved URL and verify it disappears. Explain that restore does not recover unsaved forms or page state. Never include private archive URLs in screenshots or test reports.
