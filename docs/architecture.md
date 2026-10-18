@@ -25,8 +25,9 @@ OpenCode conversation
 | `bridge/tools.js`              | Fixed MCP schemas, descriptions, and result conversion                                 |
 | `extension/background.js`      | Pairing/settings, authentication lifecycle, per-session command queues, Chrome events  |
 | `extension/session-browser.js` | Owned-tab lifecycle, persistence, generation checks, script execution, visual marking  |
+| `extension/lifecycle.js`       | Idle-group collapse, opt-in URL archives, Keep, restore/delete, cleanup eligibility    |
 | `extension/content.js`         | Page snapshots, scoped element refs, fixed DOM actions, orange overlay/cursor          |
-| `extension/popup.*`            | One-time pairing and global enable/disable controls                                    |
+| `extension/popup.*`            | Profile pairing/enable controls, cleanup opt-in, Keep, archive restore/delete          |
 
 There is no build step, arbitrary page-evaluation tool, or conversation UI in the extension.
 
@@ -70,15 +71,27 @@ MCP cancellation and timeouts send `cancel` to the worker. Queued work is marked
 
 ## Persistence and trust
 
+### Idle tab maintenance
+
+The worker's 30-second reconnect alarm also schedules `TabLifecycle.sweep`. Maintenance runs only while the profile is connected/enabled, skips busy or paused sessions, and serializes with browser commands per session. Browser commands, owned-tab activation/navigation, and inherited tabs update the session's activity timestamp. Missing timestamps get a fresh grace period on worker restoration; inactivity is not proof that OpenCode has finished a conversation. There is no OpenCode session-status polling or conversation-archive event integration.
+
+After 15 minutes, inactive groups can collapse unless they contain active or non-owned tabs. Group marking is serialized per session and consolidates only verified owned tabs within each window; indicator updates never force groups open. With explicit popup opt-in, eligible tabs can be archived after 24 hours. Active, pinned, audible, loading, and Keep tabs are excluded. URL/title/session metadata is saved before removal, eligibility and ownership are checked again, and persistence failure prevents closing. These checks and Chrome removal are not atomic; unsaved page state cannot be detected reliably or restored.
+
+Archives remain in the same Chrome profile. Restore creates an owned tab using the recorded session and current generation, requires the profile to be connected/enabled, and removes the saved record after opening. The popup can delete records without restoring them. Archive storage is capped at 1,000 entries; cleanup stops rather than evicting history. Crashes or uncertain closes can leave both a live tab and a saved URL. See [automatic cleanup](../README.md#automatic-tab-cleanup) and [security notes](../SECURITY.md#tab-cleanup-and-archives).
+
+### Storage locations
+
 - `.local/config.json`: token and port; ignored by Git.
 - `.local/profile-routing.json`: opted-in profile IDs/labels and durable conversation selections; ignored by Git.
 - `.local/mcp-config.json`: generated machine-specific OpenCode registration; ignored by Git.
-- `chrome.storage.local`: pairing, profile identity/name, and enabled preference; restricted to trusted contexts and never synchronized across profiles.
-- `chrome.storage.session`: temporary ownership, current tab, group IDs, and generations; cleared by a Chrome browser restart.
+- `chrome.storage.local`: pairing, profile identity/name, enabled/auto-archive preferences, and `tabArchives` URL/title/session records; restricted to trusted contexts and never synchronized across profiles.
+- `chrome.storage.session`: temporary ownership, current tab, group IDs, generations, last activity, and Keep flags; cleared by a Chrome browser restart. Persistent URL archives do not restore ownership of existing tabs after that restart.
 - Bridge memory: pending requests, routing bindings, and the last 100 activity summaries.
 
 Session ownership is a tab-targeting boundary, not account isolation. Session IDs are trusted MCP routing metadata, not credentials. Page content is untrusted data. See [SECURITY.md](../SECURITY.md) for the complete threat model.
 
 ## Verification
+
+`test/lifecycle.test.js` covers grouping concurrency/collapse preservation, cleanup defaults, archive/restore/delete, Keep restoration, protected tabs, busy/disconnected/disabled sessions, personal group members, eligibility changes during persistence, and storage failure. Popup tests verify cleanup controls and inert rendering of page-provided titles.
 
 `npm run check` runs lint, formatting, metadata checks, and automated tests. Tests cover authenticated transport with a real MCP client/server pair, session ownership with a simulated Chrome API, the worker readiness lifecycle, configuration validation, and DOM/cancellation behavior with jsdom. `CHROME_BINARY=/path/to/chrome npm run test:browser` uses an isolated real Chrome profile and local page to verify trusted pointer/mouse events and hit-testing. Its scripting/debugger adapter drives the same SessionBrowser click path through a test CDP connection; actual extension attachment and permission prompts still require the manual smoke test in [CONTRIBUTING.md](../CONTRIBUTING.md).
