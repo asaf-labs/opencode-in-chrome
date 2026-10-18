@@ -6,6 +6,19 @@ export class SessionBrowser {
   frameDocuments = new Map();
   enabled = false;
   clickingTabs = new Set();
+  groupWork = new Map();
+  sessionWork = new Map();
+
+  serial(map, key, work) {
+    const next = (map.get(key) || Promise.resolve()).catch(() => {}).then(work);
+    map.set(key, next);
+    void next
+      .finally(() => {
+        if (map.get(key) === next) map.delete(key);
+      })
+      .catch(() => {});
+    return next;
+  }
 
   constructor(chrome, publish = () => {}) {
     this.chrome = chrome;
@@ -20,11 +33,12 @@ export class SessionBrowser {
       const tabs = [];
       for (const owned of binding.tabs) {
         try {
-          tabs.push(this.info(await this.chrome.tabs.get(owned.id)));
+          tabs.push({ ...owned, ...this.info(await this.chrome.tabs.get(owned.id)) });
         } catch {}
       }
       this.bindings[sessionID] = {
         ...binding,
+        lastActivity: binding.lastActivity || Date.now(),
         tabs,
         currentTabID: tabs.some((t) => t.id === binding.currentTabID)
           ? binding.currentTabID
@@ -69,7 +83,14 @@ export class SessionBrowser {
   }
 
   async mark(sessionID, tab) {
+    return this.serial(this.groupWork, sessionID, () => this.markGroup(sessionID, tab));
+  }
+
+  async markGroup(sessionID, tab) {
     const binding = this.bindings[sessionID];
+    if (!binding?.tabs.some((owned) => owned.id === tab.id)) return;
+    tab = await this.chrome.tabs.get(tab.id).catch(() => null);
+    if (!tab) return;
     await this.chrome.action.setBadgeText({ text: this.enabled ? 'AI' : '', tabId: tab.id });
     await this.chrome.action.setBadgeBackgroundColor({ color: '#f97316', tabId: tab.id });
     // Groups are per window; a session can have tabs in several windows.
@@ -85,10 +106,15 @@ export class SessionBrowser {
         ...(groupID === undefined ? {} : { groupId: groupID }),
       });
       groups[tab.windowId] = groupID;
+      // Consolidate earlier races, but move only verified owned tabs, never personal tabs.
+      for (const owned of binding.tabs) {
+        const other = await this.chrome.tabs.get(owned.id).catch(() => null);
+        if (other?.windowId === tab.windowId && other.groupId !== groupID)
+          await this.chrome.tabs.group({ tabIds: [other.id], groupId: groupID });
+      }
       await this.chrome.tabGroups.update(groupID, {
         title: `OpenCode · ${sessionID.slice(-6)}${this.enabled ? '' : ' · disabled'}`,
         color: this.enabled ? 'orange' : 'grey',
-        collapsed: false,
       });
       await this.save(sessionID);
     } catch {
@@ -116,6 +142,7 @@ export class SessionBrowser {
       this.info(tab),
     );
     if (changeInfo.url) {
+      binding.lastActivity = Date.now();
       this.documents.delete(tabID);
       this.frameDocuments.delete(tabID);
     }
@@ -173,6 +200,7 @@ export class SessionBrowser {
     if (!entry) return;
     const [sessionID, binding] = entry;
     if (binding.tabs.some((owned) => owned.id === tab.id)) return;
+    binding.lastActivity = Date.now();
     binding.tabs.push(this.info(tab));
     binding.currentTabID = tab.id;
     await this.save(sessionID);
@@ -212,6 +240,26 @@ export class SessionBrowser {
   }
 
   async run(command) {
+    // Register arriving work immediately, even if it must wait behind maintenance.
+    if (this.bindings[command.sessionID])
+      this.bindings[command.sessionID].lastActivity = Date.now();
+    const tabID = command.args?.tabID ?? this.bindings[command.sessionID]?.currentTabID;
+    if (command.tool === 'click' && this.clickingTabs.has(tabID))
+      throw new Error('A click is already in progress for this tab.');
+    return this.serial(this.sessionWork, command.sessionID, async () => {
+      const binding = this.assert(command);
+      binding.lastActivity = Date.now();
+      await this.save(command.sessionID);
+      try {
+        return await this.execute(command);
+      } finally {
+        binding.lastActivity = Date.now();
+        await this.save(command.sessionID);
+      }
+    });
+  }
+
+  async execute(command) {
     const binding = this.assert(command),
       args = command.args || {};
     if (command.tool === 'open_tab') {

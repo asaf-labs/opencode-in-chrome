@@ -27,6 +27,22 @@
       <button id="enable">Save & enable browser</button>
     </form>
     <button id="disable">Disable this profile</button>
+    <h2>Tab cleanup</h2>
+    <p>Idle groups collapse after 15 minutes. Active and personal tabs are left alone.</p>
+    <label
+      ><input id="auto-archive" type="checkbox" /> Archive eligible tabs after 24 hours without
+      browser activity</label
+    >
+    <p>
+      Off by default. Saves URLs locally, then closes tabs. Unsaved forms and page state are lost.
+      Active, pinned, audible, loading, and Keep tabs are skipped. Disconnection never triggers
+      cleanup.
+    </p>
+    <h3>Keep tabs open</h3>
+    <div id="owned-tabs"></div>
+    <h3>Archived tabs</h3>
+    <div id="archives"></div>
+    <p id="cleanup-status" role="status"></p>
     <p>Profile ID: <code id="profile-id">Not paired yet</code></p>
     <p id="error" role="alert" hidden></p>
     <script type="module" src="popup.js"></script>

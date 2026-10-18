@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Serialize session group creation, consolidate owned tabs, and preserve manual group collapse.
+- Collapse inactive groups after 15 minutes; add opt-in 24-hour URL archiving, Keep controls, local restore/delete, and guards for active/pinned/audible/loading tabs, busy sessions, disconnected profiles, and storage failure.
 - Add one-time Chrome-profile opt-in, persistent profile names/IDs, simultaneous authenticated connections, and `list_profiles`/`select_profile` tools.
 - Persist conversation profile selections across bridge restarts; never fall back to another account when the selected profile is disconnected or disabled.
 - Namespace element refs by profile and guard numeric tab-ID ambiguity; isolate profile cancellation, disable controls, bindings, and results. Reject simultaneous cloned identities and fail closed on routing-state storage errors.

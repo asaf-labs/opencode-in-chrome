@@ -103,6 +103,16 @@ Repeat installs reuse identical code and preserve pairing. If different code or 
 
 Complete the pairing page's Chrome steps, then run `npm run doctor` from the printed installation directory. Browser readiness is separate from MCP connectivity.
 
+## Automatic tab cleanup
+
+The extension checks every 30 seconds while connected and enabled. After **15 minutes without browser-tool activity**, it collapses inactive session groups. Indicator refreshes preserve manual collapse, and grouping is serialized so concurrent events reuse one group per conversation/window. Existing duplicate groups are consolidated using owned tabs only; personal tabs are never adopted or closed.
+
+In the extension popup, **Archive eligible tabs after 24 hours** is **off by default**. Enabling it saves each eligible tab's URL/title in profile-local extension storage before closing it. Active, pinned, audible, loading, and **Keep** tabs are skipped, as are busy/paused sessions. Selecting an owned tab or navigating it resets its session's idle clock. Disconnected/disabled profiles never trigger cleanup. Restoring a saved URL requires this same profile to be connected and enabled. Use **Delete saved URL** to remove archive metadata. Archives are capped at 1,000 entries; cleanup stops rather than discarding older entries.
+
+**Archiving preserves URLs only, not unsaved forms or page state.** Chrome does not reliably expose unsaved changes; enable automatic closing only if this tradeoff is acceptable. Closing is best effort: a user can change focus or page state between the final check and Chrome's close operation. Keep important tabs explicitly or pin them.
+
+This is **browser inactivity**, not OpenCode session-status polling. It does not infer completion from a disconnect or automatically close tabs merely because a conversation becomes idle/archived. OpenCode session-event integration remains separate future work.
+
 ## Multiple Chrome profiles: opt in once per profile
 
 **Chrome requires the extension to be installed in each participating profile.** Installing it in Work does not give it access to Personal. No Chrome profile directories or Google account identities are inspected.

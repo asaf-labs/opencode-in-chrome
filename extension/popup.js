@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let showingConnectionError = false;
+let cleanupView = '';
 async function request(message) {
   const response = await chrome.runtime.sendMessage(message);
   if (response.error) throw new Error(response.error);
@@ -12,6 +13,46 @@ function error(error) {
 }
 async function refresh() {
   const state = await request({ type: 'state' });
+  $('auto-archive').checked = state.settings.autoArchive === true;
+  const view = JSON.stringify([state.ownedTabs, state.archives]);
+  if (view !== cleanupView) {
+    cleanupView = view;
+    $('owned-tabs').replaceChildren();
+    for (const tab of state.ownedTabs || []) {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !!tab.keep;
+      checkbox.onchange = () =>
+        request({ type: 'keep-tab', tabID: tab.id, keep: checkbox.checked })
+          .then(refresh)
+          .catch(error);
+      label.append(checkbox, document.createTextNode(`Keep: ${tab.title || tab.url || tab.id}`));
+      $('owned-tabs').append(label);
+    }
+    $('archives').replaceChildren();
+    for (const archive of state.archives || []) {
+      const button = document.createElement('button');
+      button.textContent = `Restore: ${archive.title || archive.url}`;
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          await request({ type: 'restore-archive', id: archive.id });
+          await refresh();
+        } catch (e) {
+          error(e);
+          button.disabled = false;
+        }
+      };
+      $('archives').append(button);
+      const forget = document.createElement('button');
+      forget.textContent = 'Delete saved URL';
+      forget.onclick = () =>
+        request({ type: 'forget-archive', id: archive.id }).then(refresh).catch(error);
+      $('archives').append(forget);
+    }
+  }
+  $('cleanup-status').textContent = state.cleanupError || '';
   $('status').textContent = !state.ready
     ? '○ Bridge disconnected'
     : state.enabled
@@ -25,6 +66,14 @@ async function refresh() {
     showingConnectionError = false;
   }
 }
+$('auto-archive').onchange = async () => {
+  try {
+    await request({ type: 'cleanup-settings', autoArchive: $('auto-archive').checked });
+    await refresh();
+  } catch (e) {
+    error(e);
+  }
+};
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   $('error').hidden = true;

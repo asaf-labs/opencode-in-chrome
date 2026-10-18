@@ -1,5 +1,9 @@
 # Security model
 
+## Tab cleanup and archives
+
+Automatic closing is opt-in per Chrome profile. Archives contain URL/title/session metadata in trusted-context `chrome.storage.local`, not page contents or credentials fetched separately. URLs themselves can contain sensitive data; they are not synced by this extension, but remain accessible to the local Chrome user. Restore uses the same profile and requires browser access enabled. The popup can delete saved URLs. Never publish extension storage in diagnostics. Ownership is checked from the session binding, not group membership. Activity checks and close operations are not atomic; unsaved forms cannot be reliably detected and are not preserved. Session inactivity alone does not prove an agent has finished.
+
 This is a browser-automation prototype, not a sandbox for an untrusted agent. Session-owned tabs isolate **which tabs** an agent can manipulate. They do not isolate cookies, accounts, network access, or the privileges of the local OpenCode process.
 
 ## What could be dangerous?

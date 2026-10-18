@@ -73,7 +73,13 @@ export function fakeChrome() {
         for (const tab of tabs) tabState.get(tab.id).groupId = id;
         return id;
       },
-      query: async () => [await get(activeID)],
+      query: async (query = {}) => {
+        if (query.groupId !== undefined)
+          return [...tabState.values()]
+            .filter((tab) => tab.groupId === query.groupId)
+            .map((tab) => ({ ...tab, active: tab.id === activeID }));
+        return [await get(activeID)];
+      },
       captureVisibleTab: async () => 'data:image/png;base64,aW1hZ2U=',
       sendMessage: async (tabID, message) => {
         messages.push({ tabID, message });
@@ -92,6 +98,12 @@ export function fakeChrome() {
       },
     },
     storage: {
+      local: {
+        get: async (key) => ({ [key]: structuredClone(saved[key]) }),
+        set: async (value) => {
+          Object.assign(saved, structuredClone(value));
+        },
+      },
       session: {
         set: async (value) => {
           Object.assign(saved, structuredClone(value));

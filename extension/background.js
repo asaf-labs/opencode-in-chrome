@@ -1,4 +1,5 @@
 import { SessionBrowser } from './session-browser.js';
+import { TabLifecycle } from './lifecycle.js';
 
 let socket,
   ready = false,
@@ -8,11 +9,13 @@ let settings = {};
 let suspended = Promise.resolve();
 let authorized = false;
 let connectionError = '';
+let cleanupError = '';
 const queues = new Map();
 const commands = new Map();
 const browser = new SessionBrowser(chrome, (message) => {
   if (ready) send(message);
 });
+const lifecycle = new TabLifecycle(browser, chrome);
 const initialized = Promise.all([
   chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
   chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
@@ -41,12 +44,26 @@ const initialized = Promise.all([
     }
     browser.enabled = false;
     await browser.restore(session.ownedSessionsV2);
+    await lifecycle.load();
     await browser.suspend();
   });
 
 chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(() => {
   void initialized.then(connectSocket);
+  void initialized
+    .then(() =>
+      lifecycle.sweep({
+        connected: () => ready && settings.enabled === true,
+        autoArchive: () => settings.autoArchive === true,
+      }),
+    )
+    .then(() => {
+      cleanupError = '';
+    })
+    .catch(() => {
+      cleanupError = 'Tab cleanup failed. Tabs are left open if their archive cannot be saved.';
+    });
 });
 
 function send(message) {
@@ -167,6 +184,9 @@ async function handle(message) {
       settings,
       sessionCount: Object.keys(browser.bindings).length,
       connectionError,
+      cleanupError,
+      archives: lifecycle.archives,
+      ownedTabs: Object.values(browser.bindings).flatMap((binding) => binding.tabs),
     };
   if (message.type === 'settings') {
     const url = new URL(message.url);
@@ -208,6 +228,17 @@ async function handle(message) {
     connectSocket();
     return { ok: true };
   }
+  if (message.type === 'cleanup-settings') {
+    settings.autoArchive = message.autoArchive === true;
+    await chrome.storage.local.set({ settings });
+    return { ok: true };
+  }
+  if (message.type === 'keep-tab') return lifecycle.keep(message.tabID, message.keep);
+  if (message.type === 'forget-archive') return lifecycle.forget(message.id);
+  if (message.type === 'restore-archive') {
+    if (!ready) throw new Error('Reconnect this profile before restoring.');
+    return lifecycle.restore(message.id);
+  }
   if (message.type === 'disable') {
     browser.enabled = false;
     authorized = false;
@@ -236,6 +267,14 @@ chrome.tabs.onCreated.addListener((tab) => {
 });
 chrome.tabs.onUpdated.addListener((tabID, changeInfo, tab) => {
   void initialized.then(() => browser.updated(tabID, changeInfo, tab));
+});
+chrome.tabs.onActivated?.addListener(({ tabId }) => {
+  void initialized.then(async () => {
+    const entry = browser.owner(tabId);
+    if (!entry) return;
+    entry[1].lastActivity = Date.now();
+    await browser.save(entry[0]);
+  });
 });
 chrome.permissions.onRemoved.addListener(() => {
   void initialized.then(async () => {
