@@ -40,6 +40,19 @@ input {
   color: inherit;
   width: 100%;
 }
+input[type='checkbox'] {
+  width: auto;
+  margin-right: 8px;
+}
+#owned-tabs,
+#archives {
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+#archives button {
+  overflow-wrap: anywhere;
+}
 button {
   background: #283956;
   color: inherit;
