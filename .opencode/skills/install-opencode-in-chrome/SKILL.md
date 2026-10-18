@@ -38,6 +38,12 @@ Use `list_profiles` before account-sensitive browser work. When multiple profile
 
 After upgrading, restart the updated daemon, reload/name/enable each extension instance, and reconnect MCP adapters for the new tools. A legacy connection cannot distinguish multiple old profile copies; upgrade each copy. Never clone profile-local extension storage or clear saved routing history as a routine repair.
 
+## Tab cleanup
+
+After extension changes, have the user reload the correct unpacked extension in each opted-in profile. No new permissions or pairing-token changes are required for tab cleanup. Inactive groups collapse after 15 minutes; manual collapse survives indicator refreshes. This uses browser activity, not OpenCode session-status polling or conversation-archive events.
+
+Automatic closing is off by default. Do not enable it on the user's behalf during installation. If requested, explain that the popup's 24-hour archive option saves URLs locally before closing eligible owned tabs, not unsaved forms or page state. Active, pinned, audible, loading, and Keep tabs are skipped; disconnected/disabled profiles never initiate cleanup. The popup offers Keep, Restore, and Delete saved URL. Restoration stays in the same connected/enabled profile. Do not inspect or export private archive URLs as installation diagnostics. See the checkout's README and SECURITY.md for limits and race caveats.
+
 ## Repairs
 
 - **Missing script: setup:** commands ran in the target application. Run installation/setup from the extension checkout; MCP registration belongs in the target project.
