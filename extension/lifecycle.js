@@ -1,4 +1,6 @@
 // All state stays inside this Chrome profile. Idle is browser inactivity, not session completion.
+import { DEFAULT_ARCHIVE_HOURS, validateArchiveHours } from './cleanup-settings.js';
+
 export class TabLifecycle {
   archives = [];
   running = false;
@@ -23,10 +25,16 @@ export class TabLifecycle {
       await this.browser.save(entry[0]);
     });
   }
-  async sweep({ connected, autoArchive = false } = {}) {
+  async sweep({ connected, autoArchive = false, archiveAfterHours = DEFAULT_ARCHIVE_HOURS } = {}) {
     if (this.running || !connected?.() || !this.browser.enabled) return;
     this.running = true;
     const archiveEnabled = () => (typeof autoArchive === 'function' ? autoArchive() : autoArchive);
+    const archiveDelay = () =>
+      validateArchiveHours(
+        typeof archiveAfterHours === 'function' ? archiveAfterHours() : archiveAfterHours,
+      ) *
+      60 *
+      60_000;
     try {
       for (const [sessionID, binding] of Object.entries(this.browser.bindings)) {
         if (this.browser.sessionWork.has(sessionID)) continue;
@@ -42,7 +50,7 @@ export class TabLifecycle {
             )
               await this.chrome.tabGroups.update(id, { collapsed: true }).catch(() => {});
           }
-          if (!archiveEnabled() || idle < 24 * 60 * 60_000) return;
+          if (!archiveEnabled() || idle < archiveDelay()) return;
           for (const owned of [...binding.tabs]) {
             if (!connected() || !this.browser.enabled || !archiveEnabled()) return;
             const tab = await this.chrome.tabs.get(owned.id).catch(() => null);
@@ -68,7 +76,7 @@ export class TabLifecycle {
               !connected() ||
               !this.browser.enabled ||
               !archiveEnabled() ||
-              this.now() - binding.lastActivity < 24 * 60 * 60_000 ||
+              this.now() - binding.lastActivity < archiveDelay() ||
               !this.eligible(current, owned) ||
               current.url !== tab.url ||
               this.browser.owner(tab.id)?.[0] !== sessionID

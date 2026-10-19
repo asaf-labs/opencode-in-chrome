@@ -37,6 +37,45 @@ test('concurrent indicator updates reuse one group and preserve manual collapse'
   assert.equal(chrome.groupState.get(groupID).collapsed, true);
 });
 
+test('configurable archive delay is enforced immediately before and at each boundary', async () => {
+  for (const hours of [1, 3, 24, 168]) {
+    const { chrome, browser, lifecycle, tabID } = await fixture();
+    chrome.tabState.get(tabID).active = false;
+    const start = browser.bindings.ses_cleanup.lastActivity;
+    let now = start + hours * 60 * 60_000 - 1;
+    lifecycle.now = () => now;
+    await lifecycle.sweep({ connected: () => true, autoArchive: true, archiveAfterHours: hours });
+    assert.equal(chrome.tabState.has(tabID), true);
+    now++;
+    await lifecycle.sweep({ connected: () => true, autoArchive: true, archiveAfterHours: hours });
+    assert.equal(chrome.tabState.has(tabID), false);
+  }
+});
+
+test('cleanup rechecks a delay changed during persistence and fails closed on invalid delays', async () => {
+  const { chrome, browser, lifecycle, tabID } = await fixture();
+  chrome.tabState.get(tabID).active = false;
+  lifecycle.now = () => browser.bindings.ses_cleanup.lastActivity + 4 * 60 * 60_000;
+  let hours = 3;
+  const save = chrome.storage.local.set;
+  chrome.storage.local.set = async (value) => {
+    await save(value);
+    hours = 24;
+  };
+  await lifecycle.sweep({
+    connected: () => true,
+    autoArchive: true,
+    archiveAfterHours: () => hours,
+  });
+  assert.equal(chrome.tabState.has(tabID), true);
+  assert.equal(lifecycle.archives.length, 0);
+  await assert.rejects(
+    lifecycle.sweep({ connected: () => true, autoArchive: true, archiveAfterHours: 0 }),
+    /whole number/,
+  );
+  assert.equal(chrome.tabState.has(tabID), true);
+});
+
 test('idle cleanup collapses groups by default but never closes tabs without opt-in', async () => {
   const { chrome, browser, lifecycle, tabID } = await fixture();
   const id = browser.bindings.ses_cleanup.groups[1];

@@ -11,23 +11,24 @@ OpenCode conversation
 
 ## Modules
 
-| Path                           | Responsibility                                                                         |
-| ------------------------------ | -------------------------------------------------------------------------------------- |
-| `bridge/config.js`             | Validate/read/write local credentials; validate setup options                          |
-| `bridge/setup.js`              | Generate credentials and print project-local MCP registration                          |
-| `bridge/main.js`               | Start HTTP and stdio MCP transports; manage process shutdown                           |
-| `bridge/shared-main.js`        | Start/reuse the daemon and expose stdio MCP for each project                           |
-| `bridge/shared-process.js`     | Authenticated daemon discovery, race-safe startup, and port-conflict refusal           |
-| `bridge/shared-client.js`      | Forward validated tool calls and cancellation to the shared daemon                     |
-| `bridge/shared-server.js`      | Authenticated shared tool endpoint, fixed schemas, profile-aware routing, and shutdown |
-| `bridge/http.js`               | Enforce loopback host/origin/token boundaries and validate handshakes                  |
-| `bridge/hub.js`                | Route sessions, track generations and pending calls, forward cancellation              |
-| `bridge/tools.js`              | Fixed MCP schemas, descriptions, and result conversion                                 |
-| `extension/background.js`      | Pairing/settings, authentication lifecycle, per-session command queues, Chrome events  |
-| `extension/session-browser.js` | Owned-tab lifecycle, persistence, generation checks, script execution, visual marking  |
-| `extension/lifecycle.js`       | Idle-group collapse, opt-in URL archives, Keep, restore/delete, cleanup eligibility    |
-| `extension/content.js`         | Page snapshots, scoped element refs, fixed DOM actions, orange overlay/cursor          |
-| `extension/popup.*`            | Profile pairing/enable controls, cleanup opt-in, Keep, archive restore/delete          |
+| Path                            | Responsibility                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `bridge/config.js`              | Validate/read/write local credentials; validate setup options                          |
+| `bridge/setup.js`               | Generate credentials and print project-local MCP registration                          |
+| `bridge/main.js`                | Start HTTP and stdio MCP transports; manage process shutdown                           |
+| `bridge/shared-main.js`         | Start/reuse the daemon and expose stdio MCP for each project                           |
+| `bridge/shared-process.js`      | Authenticated daemon discovery, race-safe startup, and port-conflict refusal           |
+| `bridge/shared-client.js`       | Forward validated tool calls and cancellation to the shared daemon                     |
+| `bridge/shared-server.js`       | Authenticated shared tool endpoint, fixed schemas, profile-aware routing, and shutdown |
+| `bridge/http.js`                | Enforce loopback host/origin/token boundaries and validate handshakes                  |
+| `bridge/hub.js`                 | Route sessions, track generations and pending calls, forward cancellation              |
+| `bridge/tools.js`               | Fixed MCP schemas, descriptions, and result conversion                                 |
+| `extension/background.js`       | Pairing/settings, authentication lifecycle, per-session command queues, Chrome events  |
+| `extension/session-browser.js`  | Owned-tab lifecycle, persistence, generation checks, script execution, visual marking  |
+| `extension/lifecycle.js`        | Idle-group collapse, opt-in URL archives, Keep, restore/delete, cleanup eligibility    |
+| `extension/cleanup-settings.js` | Archive-delay validation, new defaults, and legacy opt-in migration                    |
+| `extension/content.js`          | Page snapshots, scoped element refs, fixed DOM actions, orange overlay/cursor          |
+| `extension/popup.*`             | Profile pairing/enable controls, cleanup opt-in, Keep, archive restore/delete          |
 
 There is no build step, arbitrary page-evaluation tool, or conversation UI in the extension.
 
@@ -77,7 +78,7 @@ MCP cancellation and timeouts send `cancel` to the worker. Queued work is marked
 
 The worker's 30-second reconnect alarm also schedules `TabLifecycle.sweep`. Maintenance runs only while the profile is connected/enabled, skips busy or paused sessions, and serializes with browser commands per session. Browser commands, owned-tab activation/navigation, and inherited tabs update the session's activity timestamp. Missing timestamps get a fresh grace period on worker restoration; inactivity is not proof that OpenCode has finished a conversation. There is no OpenCode session-status polling or conversation-archive event integration.
 
-After 15 minutes, inactive groups can collapse unless they contain active or non-owned tabs. Group marking is serialized per session and consolidates only verified owned tabs within each window; indicator updates never force groups open. With explicit popup opt-in, eligible tabs can be archived after 24 hours. Active, pinned, audible, loading, and Keep tabs are excluded. URL/title/session metadata is saved before removal, eligibility and ownership are checked again, and persistence failure prevents closing. These checks and Chrome removal are not atomic; unsaved page state cannot be detected reliably or restored.
+After 15 minutes, inactive groups can collapse unless they contain active or non-owned tabs. Group marking is serialized per session and consolidates only verified owned tabs within each window; indicator updates never force groups open. With explicit popup opt-in, eligible tabs can be archived after the profile's configured `archiveAfterHours` delay (1–168 whole hours). The new default is 3; migration preserves 24 hours for profiles that had already opted into the old fixed rule. Settings mutations are serialized, validated, and persisted before the live cleanup preference changes. The sweep reads the current delay again before closing, so increasing it during archive persistence can prevent a close; invalid delays fail closed. Active, pinned, audible, loading, and Keep tabs are excluded. URL/title/session metadata is saved before removal, eligibility and ownership are checked again, and persistence failure prevents closing. These checks and Chrome removal are not atomic; unsaved page state cannot be detected reliably or restored.
 
 Archives remain in the same Chrome profile. Restore creates an owned tab using the recorded session and current generation, requires the profile to be connected/enabled, and removes the saved record after opening. The popup can delete records without restoring them. Archive storage is capped at 1,000 entries; cleanup stops rather than evicting history. Crashes or uncertain closes can leave both a live tab and a saved URL. See [automatic cleanup](../README.md#automatic-tab-cleanup) and [security notes](../SECURITY.md#tab-cleanup-and-archives).
 

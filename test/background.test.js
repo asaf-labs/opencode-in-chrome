@@ -62,6 +62,24 @@ test('pairing stays suspended until authenticated readiness and disable survives
     new Promise((resolve) => listeners.message(message, { id: chrome.runtime.id }, resolve));
   let state = (await request({ type: 'state' })).result;
   assert.equal(state.enabled, false);
+  assert.equal(state.settings.archiveAfterHours, 3);
+  assert.ok(
+    (await request({ type: 'cleanup-settings', autoArchive: true, archiveAfterHours: 0 })).error,
+  );
+  assert.notEqual((await request({ type: 'state' })).result.settings.autoArchive, true);
+  await request({ type: 'cleanup-settings', autoArchive: false, archiveAfterHours: 6 });
+  assert.equal((await request({ type: 'state' })).result.settings.archiveAfterHours, 6);
+  const saveSettings = chrome.storage.local.set;
+  chrome.storage.local.set = async () => {
+    throw new Error('disk full');
+  };
+  assert.ok(
+    (await request({ type: 'cleanup-settings', autoArchive: true, archiveAfterHours: 3 })).error,
+  );
+  const unchanged = (await request({ type: 'state' })).result.settings;
+  assert.equal(unchanged.archiveAfterHours, 6);
+  assert.equal(unchanged.autoArchive, false);
+  chrome.storage.local.set = saveSettings;
   assert.equal(
     listeners.message(
       { type: 'settings', ...settings },

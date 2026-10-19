@@ -2,9 +2,10 @@
 
 ## Unreleased
 
+- Make the per-profile archive delay configurable in the popup (1–168 whole hours, default 3). Keep archiving opt-in and preserve 24 hours for previously enabled profiles until changed; validate saved delays and recheck them before closing.
 - Replace the permanent page banner with an activity-only orange dot, expandable status, and per-owned-tab hide/show controls. Keep Chrome-native ownership markers; fade cursor/highlight when idle and avoid duplicate dots in frames.
 - Serialize session group creation, consolidate owned tabs, and preserve manual group collapse.
-- Collapse inactive groups after 15 minutes; add opt-in 24-hour URL archiving, Keep controls, local restore/delete, and guards for active/pinned/audible/loading tabs, busy sessions, disconnected profiles, and storage failure.
+- Collapse inactive groups after 15 minutes; add opt-in URL archiving with a configurable idle delay, Keep controls, local restore/delete, and guards for active/pinned/audible/loading tabs, busy sessions, disconnected profiles, and storage failure.
 - Add one-time Chrome-profile opt-in, persistent profile names/IDs, simultaneous authenticated connections, and `list_profiles`/`select_profile` tools.
 - Persist conversation profile selections across bridge restarts; never fall back to another account when the selected profile is disconnected or disabled.
 - Namespace element refs by profile and guard numeric tab-ID ambiguity; isolate profile cancellation, disable controls, bindings, and results. Reject simultaneous cloned identities and fail closed on routing-state storage errors.

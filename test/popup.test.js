@@ -65,11 +65,43 @@ test('setup popup enables browser once without conversation selection or side pa
   assert.ok(!calls.some((c) => c.type === 'api' || c.type === 'bind'));
   assert.equal(dom.window.document.querySelector('select'), null);
   const cleanup = dom.window.document.getElementById('auto-archive');
+  const hours = dom.window.document.getElementById('archive-hours');
+  assert.equal(hours.value, '3');
+  hours.value = '6';
   assert.equal(cleanup.checked, false);
   cleanup.checked = true;
   cleanup.dispatchEvent(new dom.window.Event('change'));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(calls.some((call) => call.type === 'cleanup-settings' && call.autoArchive === true));
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.type === 'cleanup-settings' &&
+        call.autoArchive === true &&
+        call.archiveAfterHours === 6,
+    ),
+  );
+  const cleanupCalls = calls.filter((call) => call.type === 'cleanup-settings').length;
+  hours.value = '0';
+  hours.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.filter((call) => call.type === 'cleanup-settings').length, cleanupCalls);
+  cleanup.checked = false;
+  cleanup.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.type === 'cleanup-settings' &&
+        call.autoArchive === false &&
+        call.archiveAfterHours === 3,
+    ),
+  );
+  hours.value = '12';
+  hours.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    calls.some((call) => call.type === 'cleanup-settings' && call.archiveAfterHours === 12),
+  );
   assert.equal(dom.window.document.querySelector('#owned-tabs b'), null);
   assert.equal(dom.window.document.querySelector('#archives script'), null);
   dom.window.document.querySelector('#owned-tabs input').click();

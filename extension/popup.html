@@ -30,9 +30,22 @@
     <h2>Tab cleanup</h2>
     <p>Idle groups collapse after 15 minutes. Active and personal tabs are left alone.</p>
     <label
-      ><input id="auto-archive" type="checkbox" /> Archive eligible tabs after 24 hours without
-      browser activity</label
+      ><input id="auto-archive" type="checkbox" /> Automatically archive eligible idle tabs</label
     >
+    <label
+      >Archive after (hours)<input
+        id="archive-hours"
+        type="number"
+        min="1"
+        max="168"
+        step="1"
+        value="3"
+        required
+    /></label>
+    <p>
+      1–168 whole hours. Changes save automatically for this profile. Shortening the delay can
+      archive already-idle tabs on the next check.
+    </p>
     <p>
       Off by default. Saves URLs locally, then closes tabs. Unsaved forms and page state are lost.
       Active, pinned, audible, loading, and Keep tabs are skipped. Disconnection never triggers
