@@ -234,6 +234,8 @@ async function handle(message) {
     return { ok: true };
   }
   if (message.type === 'keep-tab') return lifecycle.keep(message.tabID, message.keep);
+  if (message.type === 'indicator-visibility')
+    return browser.setIndicatorHidden(message.tabID, message.hidden);
   if (message.type === 'forget-archive') return lifecycle.forget(message.id);
   if (message.type === 'restore-archive') {
     if (!ready) throw new Error('Reconnect this profile before restoring.');
@@ -252,7 +254,18 @@ async function handle(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || sender.tab) return false;
+  if (sender.id !== chrome.runtime.id) return false;
+  if (sender.tab) {
+    // Content scripts can only hide the dot for their own verified owned tab.
+    if (message.type !== 'hide-activity-indicator') return false;
+    initialized
+      .then(() => browser.setIndicatorHidden(sender.tab.id, true))
+      .then(
+        () => respond({ result: { ok: true } }),
+        () => respond({ error: 'Unable to save indicator preference.' }),
+      );
+    return true;
+  }
   handle(message).then(
     (result) => respond({ result }),
     (error) => respond({ error: error.message }),

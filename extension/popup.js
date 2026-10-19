@@ -29,6 +29,15 @@ async function refresh() {
           .catch(error);
       label.append(checkbox, document.createTextNode(`Keep: ${tab.title || tab.url || tab.id}`));
       $('owned-tabs').append(label);
+      const indicatorButton = document.createElement('button');
+      indicatorButton.textContent = tab.indicatorHidden
+        ? 'Show page activity dot'
+        : 'Hide page activity dot';
+      indicatorButton.onclick = () =>
+        request({ type: 'indicator-visibility', tabID: tab.id, hidden: !tab.indicatorHidden })
+          .then(refresh)
+          .catch(error);
+      $('owned-tabs').append(indicatorButton);
     }
     $('archives').replaceChildren();
     for (const archive of state.archives || []) {

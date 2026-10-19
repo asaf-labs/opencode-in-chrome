@@ -20,6 +20,8 @@ This is a browser-automation prototype, not a sandbox for an untrusted agent. Se
 
 The extension cannot reliably determine whether an arbitrary click is destructive. An orange cursor is visual feedback, **not an authorization check**. A website can also imitate a page indicator, so the page overlay is not a trusted security signal.
 
+The activity dot is dismissible without revoking browser access; the Chrome tab group and AI extension badge remain ownership markers. Hiding it is not a stop/disable action. Content-script hide messages are restricted to their own verified owned tab, and the preference is stored with temporary ownership records. Only the dot/panel buttons intercept page pointer input; cursor/highlight layers remain pointer-transparent.
+
 ## Implemented safeguards
 
 - **Loopback only:** the bridge listens on `127.0.0.1`, not a public interface.

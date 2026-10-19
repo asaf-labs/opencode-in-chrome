@@ -73,10 +73,16 @@ test('setup popup enables browser once without conversation selection or side pa
   assert.equal(dom.window.document.querySelector('#owned-tabs b'), null);
   assert.equal(dom.window.document.querySelector('#archives script'), null);
   dom.window.document.querySelector('#owned-tabs input').click();
+  dom.window.document.querySelector('#owned-tabs button').click();
   dom.window.document.querySelector('#archives button').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.ok(calls.some((call) => call.type === 'keep-tab' && call.tabID === 100 && call.keep));
   assert.ok(calls.some((call) => call.type === 'restore-archive' && call.id === 'archive'));
+  assert.ok(
+    calls.some(
+      (call) => call.type === 'indicator-visibility' && call.tabID === 100 && call.hidden === true,
+    ),
+  );
   dom.window.document.getElementById('disable').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(dom.window.document.getElementById('status').textContent, /disabled/);

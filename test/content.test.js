@@ -263,6 +263,47 @@ test('agent cursor highlights a target without following the user mouse or pollu
   assert.match(host.shadowRoot.querySelector('.status').textContent, /Clicking/);
 });
 
+test('activity dot starts hidden, expands on click, can be hidden without disabling actions, and fades at idle', async (t) => {
+  const messages = [];
+  const { run, document, window } = page(t, {
+    runtime: {
+      sendMessage: async (message) => {
+        messages.push(message);
+      },
+    },
+  });
+  const shadow = document.getElementById('opencode-agent-overlay').shadowRoot;
+  const indicator = shadow.querySelector('.indicator');
+  const toggle = shadow.querySelector('.toggle');
+  const panel = shadow.querySelector('.panel');
+  assert.equal(indicator.hidden, true);
+  assert.equal(panel.hidden, true);
+  let idle;
+  const timeout = window.setTimeout.bind(window);
+  window.setTimeout = (callback, ms) =>
+    ms === 1800 ? ((idle = callback), 0) : timeout(callback, ms);
+  const snapshot = run('read_page');
+  assert.equal(indicator.hidden, false);
+  assert.equal(snapshot.elements.length, 6);
+  toggle.click();
+  assert.equal(panel.hidden, false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  shadow.querySelector('.hide').click();
+  assert.equal(indicator.hidden, true);
+  assert.equal(messages[0].type, 'hide-activity-indicator');
+  await run('click', { ref: snapshot.elements[0].ref, documentID: snapshot.documentID });
+  assert.equal(indicator.hidden, true);
+  assert.equal(shadow.querySelector('.cursor').style.opacity, '1');
+  idle();
+  assert.equal(shadow.querySelector('.cursor').style.opacity, '0');
+  assert.equal(panel.hidden, true);
+  window.__opencodeChrome.setIndicatorHidden(false);
+  run('read_page');
+  assert.equal(indicator.hidden, false);
+  idle();
+  assert.equal(indicator.hidden, true);
+});
+
 test('disabling removes the indicator and cancels an action before its click', async (t) => {
   const { run, document, window } = page(t),
     snapshot = run('read_page');

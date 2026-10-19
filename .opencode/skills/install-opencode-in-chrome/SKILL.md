@@ -46,6 +46,8 @@ Automatic closing is off by default. Do not enable it on the user's behalf durin
 
 ## Repairs
 
+- **Page activity indicator is distracting:** click the orange dot, then Hide for this tab. To restore it, use Show page activity dot under that owned tab in the extension popup. This hides only the dot/status panel, not automation or its cursor; use Disable this profile to stop browser access. Chrome tab groups and the AI badge remain visible. There is no permanent page banner in the current extension; reload the correct unpacked extension if an old banner persists.
+
 - **Missing script: setup:** commands ran in the target application. Run installation/setup from the extension checkout; MCP registration belongs in the target project.
 - **Connection closed:** inspect `npm run doctor`, Node/bridge paths, dependencies, and port ownership. An older project's bridge may still run inside the OpenCode service after its terminal closes.
 - **MCP connected but Chrome disconnected:** user checks profile, unpacked extension path, URL/token locally, and permission prompt; reconnect/reload as appropriate.

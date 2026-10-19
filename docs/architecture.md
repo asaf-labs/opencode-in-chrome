@@ -57,6 +57,8 @@ The daemon validates session metadata, fixed tool names and input schemas, and a
 
 ## Commands, cancellation, and refs
 
+The content script's activity UI is separate from authorization. Chrome groups and the AI action badge remain persistent ownership markers; the page has no permanent banner. The main-frame dot appears during content actions, expands on click, and can be hidden per owned tab. Dot visibility is saved alongside temporary ownership records and applied before page actions and after navigation. Content-script messages may only hide the dot for their own verified owned tab; popup controls can show it again. Cursor/highlight layers stay pointer-transparent and fade when idle, independent of the dot. Only dot/panel buttons accept clicks, and shadow UI is excluded from page snapshots.
+
 The bridge attaches a random request ID, session generation, and 25-second deadline. The worker queues commands per session; different sessions can run concurrently. SessionBrowser checks ownership and generation before work and after asynchronous boundaries. Content actions recheck enabled state, cancellation, snapshot revision, and DOM validity after the cursor animation before interaction.
 
 `read_page` creates a fresh ref map. A monotonically increasing ref counter avoids accidentally reusing old names; snapshot revision checks also stop a pending action when a new snapshot replaces its map. Document IDs and URL checks prevent refs crossing documents or same-document navigation.

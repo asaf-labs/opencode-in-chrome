@@ -55,7 +55,7 @@ async function fixture() {
   let parentDocument = 'root-document';
   chrome.scripting.executeScript = async (request) => {
     if (request.files) return [];
-    if (request.func.toString().includes("run('read_page')"))
+    if (request.func.toString().includes("run('read_page'"))
       return [
         {
           frameId: 0,
