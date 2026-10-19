@@ -56,12 +56,13 @@ h1{color:#fb923c}code,input{font-family:monospace}input{display:block;box-sizing
 <label for="extension-path">Extension folder</label><input id="extension-path" readonly value="${escape(extensionPath)}">
 <button type="button" id="copy-path">Copy extension folder path</button><span id="path-result" role="status"></span>
 ${platforms.map((item) => platformPanel(item, selected)).join('')}</li>
-<li>Open the extension toolbar popup. Set its URL to <code>http://127.0.0.1:${config.port}</code>.</li>
+<li>Open the extension toolbar popup. Set a profile name such as <strong>Work</strong> or <strong>Personal</strong>, and set its URL to <code>http://127.0.0.1:${config.port}</code>.</li>
 <li>Copy the token below into the popup, choose <strong>Save &amp; enable browser</strong>, and accept the website permission prompt.</li>
 <li>In the target project's OpenCode session, open <code>/mcps</code> and connect <code>chrome</code>. The popup should say <strong>Ready — sessions can open tabs</strong>.</li></ol>
 <label for="token">Pairing token</label><input id="token" type="password" readonly value="${config.token}" autocomplete="off">
 <button id="copy">Copy token</button><button id="reveal">Show / hide token</button><span id="result" role="status"></span>
 <p>After pairing, run <code>npm run doctor</code> from the extension repository. You can close or delete this page; regenerate it with <code>npm run pair</code> if needed.</p>
+<p>To opt in another Chrome profile, install/load the same extension folder in that profile, then repeat pairing with this URL/token and a different name. Each profile gets its own persistent ID. In OpenCode, use <code>list_profiles</code> and <code>select_profile</code> to choose. Closing or disabling one profile never selects another account automatically.</p>
 <script>
 const tabs=Array.from(document.querySelectorAll('[role="tab"]'));
 function selectTab(tab){

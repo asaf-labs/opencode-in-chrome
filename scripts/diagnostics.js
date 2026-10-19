@@ -14,7 +14,7 @@ export async function portAvailable(port) {
 
 export async function inspectBridge(
   config,
-  { fetchStatus = fetch, isPortAvailable = portAvailable } = {},
+  { fetchStatus = fetch, isPortAvailable = portAvailable, expectedVersion } = {},
 ) {
   const checks = [];
   const check = (id, status, message) => checks.push({ id, status, message });
@@ -48,11 +48,19 @@ export async function inspectBridge(
         ? `Authenticated shared bridge reachable at ${base}; serves all configured projects.`
         : `Authenticated bridge reachable at ${base}.`,
     );
+    if (expectedVersion)
+      check(
+        'bridge_version',
+        status.version === expectedVersion ? 'pass' : 'warn',
+        status.version === expectedVersion
+          ? `Running bridge version ${expectedVersion}.`
+          : `Running bridge version ${status.version || 'unknown'}; checkout is ${expectedVersion}. Restart the updated bridge and reconnect MCP adapters.`,
+      );
     check(
       'browser',
-      status.connected && status.extensionProtocol === 2 ? 'pass' : 'warn',
-      status.connected && status.extensionProtocol === 2
-        ? 'Chrome extension is connected using protocol 2.'
+      status.connected && [2, 3].includes(status.extensionProtocol) ? 'pass' : 'warn',
+      status.connected && [2, 3].includes(status.extensionProtocol)
+        ? `Chrome extension is connected using protocol ${status.extensionProtocol}.`
         : 'Chrome is disconnected or uses an old extension. Load/reload extension/ and pair it using npm run pair.',
     );
     check(
@@ -62,6 +70,28 @@ export async function inspectBridge(
         ? 'Browser access is enabled.'
         : 'Open the extension popup and choose Save & enable browser.',
     );
+    if (Array.isArray(status.profiles)) {
+      if (status.routingHealthy === false)
+        check(
+          'profile_routing',
+          'fail',
+          'Profile routing could not be saved. Repair access to .local/profile-routing.json; no actions are sent until routing can be persisted.',
+        );
+      const connected = status.profiles.filter((profile) => profile.connected).length;
+      const enabled = status.profiles.filter((profile) => profile.enabled).length;
+      check(
+        'profiles',
+        enabled ? 'pass' : 'warn',
+        `${status.profiles.length} registered profile(s), ${connected} connected, ${enabled} enabled. Use list_profiles and select_profile to choose an account/profile; disconnected selections never fall back.`,
+      );
+      if (status.profiles.some((profile) => profile.connected && profile.legacy)) {
+        check(
+          'profile_opt_in',
+          'warn',
+          'A legacy extension is connected. Reload the extension in that Chrome profile, name it, and Save & enable browser for multi-profile opt-in.',
+        );
+      }
+    }
   } catch {
     // Never print response bodies, credentials, binding URLs, or raw network errors.
     const available = await isPortAvailable(config.port).catch(() => false);

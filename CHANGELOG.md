@@ -2,12 +2,24 @@
 
 ## Unreleased
 
+- Integrate inspection/recordings with profile-aware routing, iframe actions, quiet activity indicators, and configurable cleanup; export profile-tagged artifact summaries without raw payloads and exclude retained captures from idle cleanup.
 - Add session-owned network inspection, redacted headers and opt-in bodies, console/error logs, bounded CPU profiles, and main-frame performance timeline trace exports.
 - Coordinate debugger leases across inspection, clicks and recordings, with bounded buffers, automatic expiry, navigation invalidation and cleanup on disable/disconnect.
 - Add real-Chrome diagnostics regression and fix the shared request schema for the Zod 4 dependency now on main.
 - Add self-declared, immutable task plans with verified step capture and local WebM/action-manifest export; exclude failed attempts while transparently labelling edited walkthroughs.
 - Add deterministic selector-based actions, observable pre/postconditions and goal checks, recording cancellation, bounded capture, and private artifacts without FFmpeg or automatic replay.
 - Add the offscreen permission for built-in WebCodecs encoding and a real Chrome recording regression with a failed attempt excluded.
+- Make the per-profile archive delay configurable in the popup (1–168 whole hours, default 3). Keep archiving opt-in and preserve 24 hours for previously enabled profiles until changed; validate saved delays and recheck them before closing.
+- Replace the permanent page banner with an activity-only orange dot, expandable status, and per-owned-tab hide/show controls. Keep Chrome-native ownership markers; fade cursor/highlight when idle and avoid duplicate dots in frames.
+- Serialize session group creation, consolidate owned tabs, and preserve manual group collapse.
+- Collapse inactive groups after 15 minutes; add opt-in URL archiving with a configurable idle delay, Keep controls, local restore/delete, and guards for active/pinned/audible/loading tabs, busy sessions, disconnected profiles, and storage failure.
+- Add one-time Chrome-profile opt-in, persistent profile names/IDs, simultaneous authenticated connections, and `list_profiles`/`select_profile` tools.
+- Persist conversation profile selections across bridge restarts; never fall back to another account when the selected profile is disconnected or disabled.
+- Namespace element refs by profile and guard numeric tab-ID ambiguity; isolate profile cancellation, disable controls, bindings, and results. Reject simultaneous cloned identities and fail closed on routing-state storage errors.
+- Expose custom multiselect/listbox options, ARIA checkboxes, menu items, and associated checkbox labels as snapshot refs; prioritize open popups at the element cap and report truncation.
+- Add searched-option click regressions for Coupa-style command menus while preserving stale-ref, disabled-target, and covered-target checks.
+- Add frame-scoped snapshots and refs, targeted iframe reading/scrolling, and nested cross-origin iframe actions with validated main-viewport click geometry.
+- Revalidate each containing iframe before mouse-down; reject inaccessible, covered, moved, or unsupported transformed frame targets instead of guessing coordinates.
 - Replace synthetic DOM clicks with hit-tested browser-level mouse movement, press, and release using the Chrome debugger API on session-owned tabs.
 - Report clicks as dispatched with application acceptance unknown; revalidate after hover handlers and warn about uncertain outcomes after mouse-down.
 - Add the debugger permission and document extension reload, debugging banners, and DevTools conflicts.

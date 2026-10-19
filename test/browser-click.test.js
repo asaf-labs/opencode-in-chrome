@@ -11,6 +11,14 @@ const content = await readFile(new URL('../extension/content.js', import.meta.ur
 const html = `<!doctype html><title>Click regression</title>
 <style>button { margin: 100px; width: 100px; height: 40px; }</style>
 <div id="value">--</div><div id="dropdown"><button id="yes">Yes</button></div>
+<div id="portal-filter">Portals: none</div>
+<div role="dialog" aria-label="Portal filters">
+  <input id="portal-search" role="combobox" aria-label="Search portals" aria-expanded="true">
+  <div role="listbox" aria-multiselectable="true">
+    <div id="coupa" role="option" cmdk-item="" aria-selected="true" style="padding:12px;width:180px"><svg width="16" height="16" aria-hidden="true"></svg><span>Coupa</span></div>
+    <div id="other-portal" role="option" cmdk-item="">Other portal</div>
+  </div>
+</div>
 <script>
 window.events = [];
 let pressed = false;
@@ -24,6 +32,13 @@ for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']
       document.getElementById('dropdown').hidden = true;
     }
   });
+document.getElementById('portal-search').addEventListener('input', () => {
+  document.getElementById('other-portal').hidden = true;
+});
+document.getElementById('coupa').addEventListener('click', event => {
+  if (!event.isTrusted) return;
+  document.getElementById('portal-filter').textContent = 'Portals: Coupa';
+});
 </script>`;
 
 test(
@@ -92,6 +107,22 @@ test(
       { type: 'mouseup', trusted: true },
       { type: 'click', trusted: true },
     ]);
+    const portals = await browser.run(command('read_page'));
+    const search = portals.elements.find((element) => element.label === 'Search portals');
+    await browser.run(command('type', { ref: search.ref, text: 'Coupa' }));
+    const filtered = await browser.run(command('read_page'));
+    const coupa = filtered.elements.find((element) => element.label === 'Coupa');
+    assert.equal(coupa.type, 'option');
+    assert.equal(
+      filtered.elements.some((element) => element.label === 'Other portal'),
+      false,
+    );
+    const selected = await browser.run(command('click', { ref: coupa.ref }));
+    assert.equal(selected.dispatched, true);
+    assert.equal(
+      await cdp.evaluate("document.getElementById('portal-filter').textContent"),
+      'Portals: Coupa',
+    );
     await cdp.evaluate(`document.getElementById('dropdown').hidden = false;
     events = []; document.getElementById('value').textContent = '--';
     const cover = document.createElement('div');

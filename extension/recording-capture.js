@@ -6,7 +6,13 @@ export class RecordingCapture {
     this.browser = browser;
     this.onFrame = (source, method, params) => {
       const capture = this.active;
-      if (!capture || source.tabId !== capture.tabID || method !== 'Page.screencastFrame') return;
+      if (
+        !capture ||
+        source.sessionId ||
+        source.tabId !== capture.tabID ||
+        method !== 'Page.screencastFrame'
+      )
+        return;
       const pending = this.frame(capture, params)
         .catch((error) => {
           capture.error = error;
@@ -15,7 +21,7 @@ export class RecordingCapture {
       capture.pending.add(pending);
     };
     this.onDetach = (source) => {
-      if (this.active?.tabID === source.tabId)
+      if (!source.sessionId && this.active?.tabID === source.tabId)
         this.active.error = new Error(
           'Recording debugger detached; this attempt will be discarded.',
         );

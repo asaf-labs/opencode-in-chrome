@@ -9,12 +9,54 @@
     <h1>OpenCode in Chrome</h1>
     <p id="status" role="status">Connecting…</p>
     <p>Once enabled, OpenCode conversations can open and control their own tabs automatically.</p>
+    <p>
+      Opt in separately in each Chrome profile. OpenCode will use the profile you select, with its
+      existing logins.
+    </p>
     <form id="settings-form">
+      <label
+        >Profile name<input
+          id="profile-name"
+          type="text"
+          maxlength="80"
+          placeholder="Work, Personal, Testing…"
+          required
+      /></label>
       <label>Bridge URL<input id="url" type="url" value="http://127.0.0.1:8790" required /></label>
       <label>Pairing token<input id="token" type="password" autocomplete="off" required /></label>
       <button id="enable">Save & enable browser</button>
     </form>
-    <button id="disable">Disable browser access</button>
+    <button id="disable">Disable this profile</button>
+    <h2>Tab cleanup</h2>
+    <p>Idle groups collapse after 15 minutes. Active and personal tabs are left alone.</p>
+    <label
+      ><input id="auto-archive" type="checkbox" /> Automatically archive eligible idle tabs</label
+    >
+    <label
+      >Archive after (hours)<input
+        id="archive-hours"
+        type="number"
+        min="1"
+        max="168"
+        step="1"
+        value="3"
+        required
+    /></label>
+    <p>
+      1–168 whole hours. Changes save automatically for this profile. Shortening the delay can
+      archive already-idle tabs on the next check.
+    </p>
+    <p>
+      Off by default. Saves URLs locally, then closes tabs. Unsaved forms and page state are lost.
+      Active, pinned, audible, loading, and Keep tabs are skipped. Disconnection never triggers
+      cleanup.
+    </p>
+    <h3>Keep tabs open</h3>
+    <div id="owned-tabs"></div>
+    <h3>Archived tabs</h3>
+    <div id="archives"></div>
+    <p id="cleanup-status" role="status"></p>
+    <p>Profile ID: <code id="profile-id">Not paired yet</code></p>
     <p id="error" role="alert" hidden></p>
     <script type="module" src="popup.js"></script>
   </body>

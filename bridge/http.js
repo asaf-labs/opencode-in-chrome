@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { validateBinding } from './hub.js';
+import { validateProfile } from './profile-store.js';
 
 export function sameToken(candidate, token) {
   if (typeof candidate !== 'string') return false;
@@ -52,6 +53,13 @@ export function createBridgeHttp({ token, port = 8790, hub, handleRequest, statu
           extensionProtocol: hub.extensionProtocol,
           bindings: Object.fromEntries(hub.bindings),
           activity: hub.activity,
+          ...(hub.profilesSnapshot
+            ? {
+                profiles: hub.profilesSnapshot(),
+                features: ['profiles'],
+                routingHealthy: !hub.persistenceError,
+              }
+            : {}),
         };
       } else {
         res.writeHead(404).end();
@@ -77,6 +85,7 @@ export function createBridgeHttp({ token, port = 8790, hub, handleRequest, statu
     }
     sockets.handleUpgrade(req, socket, head, (ws) => {
       let authenticated = false;
+      let connection;
       const deadline = setTimeout(() => ws.close(4003, 'Authentication timeout'), 5000);
       ws.on('close', () => clearTimeout(deadline));
       ws.on('error', () => {});
@@ -90,19 +99,33 @@ export function createBridgeHttp({ token, port = 8790, hub, handleRequest, statu
               ws.close(4003, 'Invalid token');
               return;
             }
-            const bindings = message.version === 2 ? Object.entries(message.bindings || {}) : [];
+            const profile = message.version === 3 ? validateProfile(message.profile) : undefined;
+            const bindings = [2, 3].includes(message.version)
+              ? Object.entries(message.bindings || {})
+              : [];
             // Validate the entire handshake before replacing a working connection.
             for (const [sessionID, binding] of bindings) validateBinding(sessionID, binding);
             clearTimeout(deadline);
             authenticated = true;
-            hub.attach(ws, message.version === 2 && message.enabled === true, message.version || 1);
-            for (const [sessionID, binding] of bindings) hub.bind(sessionID, binding);
-            ws.send(JSON.stringify({ type: 'ready' }));
+            connection =
+              hub.attach(
+                ws,
+                [2, 3].includes(message.version) && message.enabled === true,
+                message.version || 1,
+                profile,
+              ) || hub;
+            for (const [sessionID, binding] of bindings) connection.bind(sessionID, binding);
+            ws.send(JSON.stringify({ type: 'ready', profileID: profile?.id }));
             return;
           }
-          if (hub.socket === ws) hub.receive(message);
-        } catch {
-          ws.close(4002, 'Invalid message');
+          if (connection?.socket === ws) connection.receive(message);
+        } catch (error) {
+          ws.close(
+            error.code === 'PROFILE_CONNECTED' ? 4009 : 4002,
+            error.code === 'PROFILE_CONNECTED'
+              ? 'Profile identity is already connected. Re-pair a fresh extension installation.'
+              : 'Invalid message',
+          );
         }
       });
     });

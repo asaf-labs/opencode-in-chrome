@@ -213,6 +213,54 @@ test('closing or protecting a tab clears its recording without touching other ow
   }
 });
 
+test('explicit recording cancellation interrupts a pending attachment without waiting for the session queue', async () => {
+  const { chrome, browser, command, plan } = await fixture();
+  const { recordingID } = await browser.run(command('start_recording', plan));
+  const attaching = Promise.withResolvers(),
+    release = Promise.withResolvers();
+  const attach = chrome.debugger.attach;
+  chrome.debugger.attach = async (...args) => {
+    attaching.resolve();
+    await release.promise;
+    return attach(...args);
+  };
+  const step = browser.run(command('run_recording_step', { recordingID, stepID: 'choose-yes' }));
+  const rejected = assert.rejects(step, /excluded/);
+  await attaching.promise;
+  const cancelled = browser.run(command('cancel_recording', { recordingID }));
+  release.resolve();
+  assert.equal((await cancelled).cancelled, true);
+  await rejected;
+  assert.equal(chrome.debuggerTabs.size, 0);
+  assert.equal(browser.recordings.sessions.size, 0);
+});
+
+test('pausing a session discards its retained recording plan', async () => {
+  const { browser, command, plan } = await fixture();
+  await browser.run(command('start_recording', plan));
+  await browser.pause('ses_recording');
+  assert.equal(browser.recordings.sessions.size, 0);
+});
+
+test('recording ignores screencast events from child protocol targets', async () => {
+  const { browser, chrome, command, tab } = await fixture();
+  const capture = await browser.recordings.capture.start(command('run_recording_step'), tab.tabID);
+  const frames = capture.frames.length;
+  chrome.emitDebugger(
+    tab.tabID,
+    'Page.screencastFrame',
+    { data: 'cHJpdmF0ZQ==', sessionId: 1 },
+    'child',
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(capture.frames.length, frames);
+  assert.equal(
+    chrome.debuggerCalls.some((call) => call.method === 'Page.screencastFrameAck'),
+    false,
+  );
+  await browser.recordings.capture.stop();
+});
+
 test('goal verification is required at export and explicit cancellation preserves exports', async () => {
   const { browser, command, plan } = await fixture();
   const { recordingID } = await browser.run(command('start_recording', plan));

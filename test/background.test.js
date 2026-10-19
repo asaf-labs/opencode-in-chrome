@@ -62,22 +62,77 @@ test('pairing stays suspended until authenticated readiness and disable survives
     new Promise((resolve) => listeners.message(message, { id: chrome.runtime.id }, resolve));
   let state = (await request({ type: 'state' })).result;
   assert.equal(state.enabled, false);
+  assert.equal(state.settings.archiveAfterHours, 3);
+  assert.ok(
+    (await request({ type: 'cleanup-settings', autoArchive: true, archiveAfterHours: 0 })).error,
+  );
+  assert.notEqual((await request({ type: 'state' })).result.settings.autoArchive, true);
+  await request({ type: 'cleanup-settings', autoArchive: false, archiveAfterHours: 6 });
+  assert.equal((await request({ type: 'state' })).result.settings.archiveAfterHours, 6);
+  const saveSettings = chrome.storage.local.set;
+  chrome.storage.local.set = async () => {
+    throw new Error('disk full');
+  };
+  assert.ok(
+    (await request({ type: 'cleanup-settings', autoArchive: true, archiveAfterHours: 3 })).error,
+  );
+  const unchanged = (await request({ type: 'state' })).result.settings;
+  assert.equal(unchanged.archiveAfterHours, 6);
+  assert.equal(unchanged.autoArchive, false);
+  chrome.storage.local.set = saveSettings;
+  assert.equal(
+    listeners.message(
+      { type: 'settings', ...settings },
+      { id: chrome.runtime.id, tab: { id: 1 } },
+      () => {},
+    ),
+    false,
+  );
+  const refusedHide = await new Promise((resolve) =>
+    listeners.message(
+      { type: 'hide-activity-indicator' },
+      { id: chrome.runtime.id, tab: { id: 1 } },
+      resolve,
+    ),
+  );
+  assert.ok(refusedHide.error);
   const first = sockets[0];
   await first.open();
   state = (await request({ type: 'state' })).result;
   assert.equal(state.ready, false);
   assert.equal(state.enabled, false);
-  first.receive({ type: 'ready' });
+  assert.equal(first.sent[0].version, 3);
+  assert.ok(first.sent[0].profile.id);
+  const identity = first.sent[0].profile.id;
+  first.receive({ type: 'ready', profileID: identity });
   assert.equal((await request({ type: 'state' })).result.enabled, true);
   await request({ type: 'settings', ...settings });
   assert.equal((await request({ type: 'state' })).result.enabled, false);
   const second = sockets[1];
   await second.open();
   await request({ type: 'disable' });
-  second.receive({ type: 'ready' });
+  assert.equal(second.sent[0].profile.id, identity);
+  second.receive({ type: 'ready', profileID: identity });
   assert.equal((await request({ type: 'state' })).result.enabled, false);
   second.close();
   state = (await request({ type: 'state' })).result;
   assert.equal(state.ready, false);
   assert.equal(state.enabled, false);
+  // A fresh Chrome profile has its own identity, but no token/opt-in: never connect.
+  const count = sockets.length;
+  let stored = {};
+  chrome.storage.local.get = async () => structuredClone(stored);
+  chrome.storage.local.set = async (update) => {
+    stored = structuredClone({ ...stored, ...update });
+  };
+  await import('../extension/background.js?fresh-profile');
+  const fresh = (await request({ type: 'state' })).result;
+  assert.equal(fresh.enabled, false);
+  assert.equal(fresh.settings.token, undefined);
+  assert.notEqual(fresh.settings.profileID, identity);
+  assert.equal(sockets.length, count);
+  await import('../extension/background.js?fresh-profile-worker-restart');
+  const restored = (await request({ type: 'state' })).result;
+  assert.equal(restored.settings.profileID, fresh.settings.profileID);
+  assert.equal(sockets.length, count);
 });

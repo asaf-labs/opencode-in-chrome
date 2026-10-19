@@ -1,6 +1,6 @@
 {
   "name": "@asaf-labs/opencode-in-chrome",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "bin": {
     "opencode-in-chrome": "scripts/cli.js"
   },
@@ -48,7 +48,7 @@
     "start": "node bridge/main.js",
     "stop:shared": "node scripts/stop-shared.js",
     "test": "node --test test/*.test.js",
-    "test:browser": "node --test test/browser-click.test.js test/browser-recording.test.js test/browser-inspection.test.js",
+    "test:browser": "node --test --test-concurrency=1 test/browser-click.test.js test/browser-frames.test.js test/browser-recording.test.js test/browser-inspection.test.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

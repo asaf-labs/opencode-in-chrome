@@ -5,6 +5,7 @@ export class DebuggerSessions {
     this.chrome = chrome;
     this.browser = browser;
     chrome.debugger?.onDetach?.addListener((source) => {
+      if (source.sessionId) return;
       const entry = this.entries.get(source.tabId);
       if (entry) {
         entry.detached = true;

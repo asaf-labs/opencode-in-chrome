@@ -36,7 +36,16 @@ test('setup popup enables browser once without conversation selection or side pa
               ? {
                   ready: true,
                   enabled,
-                  settings: { token: 'a'.repeat(64), url: 'http://127.0.0.1:8790' },
+                  ownedTabs: [{ id: 100, title: '<b>Owned</b>', keep: false }],
+                  archives: [
+                    { id: 'archive', title: '<script>bad</script>', url: 'https://example.com' },
+                  ],
+                  settings: {
+                    token: 'a'.repeat(64),
+                    url: 'http://127.0.0.1:8790',
+                    profileName: 'Work',
+                    profileID: 'test-profile',
+                  },
                 }
               : { ok: true },
         };
@@ -51,8 +60,61 @@ test('setup popup enables browser once without conversation selection or side pa
   assert.equal(permissions[0].origins[0], '<all_urls>');
   assert.match(dom.window.document.getElementById('status').textContent, /Ready/);
   assert.ok(calls.some((c) => c.type === 'settings'));
+  assert.equal(calls.find((c) => c.type === 'settings').profileName, 'Work');
+  assert.equal(dom.window.document.getElementById('profile-id').textContent, 'test-profile');
   assert.ok(!calls.some((c) => c.type === 'api' || c.type === 'bind'));
   assert.equal(dom.window.document.querySelector('select'), null);
+  const cleanup = dom.window.document.getElementById('auto-archive');
+  const hours = dom.window.document.getElementById('archive-hours');
+  assert.equal(hours.value, '3');
+  hours.value = '6';
+  assert.equal(cleanup.checked, false);
+  cleanup.checked = true;
+  cleanup.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.type === 'cleanup-settings' &&
+        call.autoArchive === true &&
+        call.archiveAfterHours === 6,
+    ),
+  );
+  const cleanupCalls = calls.filter((call) => call.type === 'cleanup-settings').length;
+  hours.value = '0';
+  hours.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.filter((call) => call.type === 'cleanup-settings').length, cleanupCalls);
+  cleanup.checked = false;
+  cleanup.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.type === 'cleanup-settings' &&
+        call.autoArchive === false &&
+        call.archiveAfterHours === 3,
+    ),
+  );
+  hours.value = '12';
+  hours.dispatchEvent(new dom.window.Event('change'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    calls.some((call) => call.type === 'cleanup-settings' && call.archiveAfterHours === 12),
+  );
+  assert.equal(dom.window.document.querySelector('#owned-tabs b'), null);
+  assert.equal(dom.window.document.querySelector('#archives script'), null);
+  dom.window.document.querySelector('#owned-tabs input').click();
+  dom.window.document.querySelector('#owned-tabs button').click();
+  dom.window.document.querySelector('#archives button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(calls.some((call) => call.type === 'keep-tab' && call.tabID === 100 && call.keep));
+  assert.ok(calls.some((call) => call.type === 'restore-archive' && call.id === 'archive'));
+  assert.ok(
+    calls.some(
+      (call) => call.type === 'indicator-visibility' && call.tabID === 100 && call.hidden === true,
+    ),
+  );
   dom.window.document.getElementById('disable').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(dom.window.document.getElementById('status').textContent, /disabled/);

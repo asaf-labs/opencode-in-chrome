@@ -5,6 +5,7 @@
   "permissions": [
     { "action": "chrome_*", "resource": "*", "effect": "ask" },
     { "action": "chrome_list_tabs", "resource": "*", "effect": "allow" },
+    { "action": "chrome_list_profiles", "resource": "*", "effect": "allow" },
     { "action": "chrome_read_page", "resource": "*", "effect": "allow" },
     { "action": "chrome_scroll", "resource": "*", "effect": "allow" },
   ],

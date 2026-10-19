@@ -94,7 +94,7 @@ export class BrowserHub {
     if (!/^ses[\w-]+$/.test(sessionID || ''))
       throw new Error('This tool requires OpenCode session metadata.');
     if (!this.socket || this.socket.readyState !== 1) throw new Error('Chrome is disconnected.');
-    if (this.extensionProtocol !== 2)
+    if (![2, 3].includes(this.extensionProtocol))
       throw new Error(
         'Chrome is running the old extension. Reload OpenCode in Chrome at chrome://extensions.',
       );

@@ -134,6 +134,30 @@ test('navigation completion installs the control overlay only on owned tabs', as
   assert.equal(chrome.scriptCalls[1].args[0], true);
 });
 
+test('page-dot visibility is per owned tab and survives worker restoration', async () => {
+  const { browser, chrome, command } = fixture();
+  const a = await browser.run(command('open_tab', { url: 'https://example.com' }));
+  const b = await browser.run(command('open_tab', { url: 'https://example.org' }));
+  await browser.setIndicatorHidden(a.tabID, true);
+  assert.equal(
+    browser.bindings.ses_one.tabs.find((tab) => tab.id === a.tabID).indicatorHidden,
+    true,
+  );
+  assert.notEqual(
+    browser.bindings.ses_one.tabs.find((tab) => tab.id === b.tabID).indicatorHidden,
+    true,
+  );
+  assert.equal(chrome.scriptCalls.at(-1).args[1], true);
+  await assert.rejects(browser.setIndicatorHidden(1, true), /not agent-owned/);
+  const restarted = new SessionBrowser(chrome);
+  await restarted.restore(chrome.saved.ownedSessionsV2);
+  assert.equal(
+    restarted.bindings.ses_one.tabs.find((tab) => tab.id === a.tabID).indicatorHidden,
+    true,
+  );
+  assert.equal(browser.enabled, true);
+});
+
 test('connection loss suspends actions and notifies only owned pages', async () => {
   const { browser, chrome, command } = fixture();
   const owned = await browser.run(command('open_tab', { url: 'https://example.com' }));

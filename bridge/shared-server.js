@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { BrowserHub } from './hub.js';
+import { ProfileHub } from './profiles.js';
 import { createBridgeHttp } from './http.js';
 import { browserToolDefinitions } from './tools.js';
 
@@ -31,7 +31,8 @@ function writeJSON(res, status, output) {
     res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(output));
 }
 
-export function createSharedBridge(config, { version, hub = new BrowserHub() } = {}) {
+export function createSharedBridge(config, { version, hub = new ProfileHub() } = {}) {
+  // Process entrypoints inject a file-backed ProfileHub; the default is for embedding/tests.
   const controllers = new Set();
   let close;
   async function handleRequest(req, res, route) {

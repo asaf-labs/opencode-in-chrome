@@ -4,6 +4,8 @@ Inspection is explicit and restricted to a session-owned HTTP/HTTPS tab. It does
 
 ## Workflow
 
+First call `list_profiles` and `select_profile` for the intended Chrome account/profile. All inspection tools accept `profileID`; include the selected profile's ID with explicit `tabID` when multiple profiles are registered. Inspection remains attached to its original profile/tab, never follows a profile selection, and is not automatically stopped just by switching the conversation's profile. Stop it before switching, or explicitly select the original profile to stop it later. Its five-minute expiry still applies; disabling/disconnecting the original profile discards its captures. Active inspection sessions are excluded from idle tab cleanup.
+
 1. Use `open_tab`/`list_tabs` to get the explicit owned `tabID`.
 2. Call `start_inspection({ tabID })` before reproducing the issue. Historical console messages and traffic are not returned. Set `captureBodies: true` only if reading potentially sensitive request/response content is authorized.
 3. Reproduce using existing browser tools or manual interaction.
@@ -15,13 +17,14 @@ Inspection is explicit and restricted to a session-owned HTTP/HTTPS tab. It does
 Example:
 
 ```js
-await chrome.start_inspection({ tabID: 123, captureBodies: true });
+// profileID and tabID must come from this conversation's selected profile and owned tabs.
+await chrome.start_inspection({ profileID, tabID: 123, captureBodies: true });
 // Reproduce on this tab using its browser tools.
-await chrome.network_requests({ tabID: 123, urlContains: '/api/', limit: 20 });
-await chrome.console_logs({ tabID: 123, level: 'warning', limit: 20 });
+await chrome.network_requests({ profileID, tabID: 123, urlContains: '/api/', limit: 20 });
+await chrome.console_logs({ profileID, tabID: 123, level: 'warning', limit: 20 });
 // Use an actual requestID returned above, never invent one.
-await chrome.network_request({ tabID: 123, requestID, includeBody: true });
-await chrome.stop_inspection({ tabID: 123 });
+await chrome.network_request({ profileID, tabID: 123, requestID, includeBody: true });
+await chrome.stop_inspection({ profileID, tabID: 123 });
 ```
 
 These illustrate MCP inputs, not standalone JavaScript imports. In OpenCode Code Mode, discover and call the corresponding `tools.chrome` tools.
@@ -42,7 +45,7 @@ Document changes clear old requests and logs, discard profiles, and invalidate o
 
 Call `start_cpu_profile({ tabID, durationMs: 10000 })`, reproduce the workload, then `stop_cpu_profile({ tabID })`. Sampling uses a fixed 1 ms interval and automatically stops at the deadline, up to 30 seconds. The stop tool also retrieves an already auto-completed profile.
 
-The bridge saves a generated private `.local/inspections/<UUID>/profile.cpuprofile` and returns only its path and summary. Import the file into Chrome DevTools' JavaScript profiler or compatible tooling. Function names/URLs are sanitized; raw samples do not enter model context through the MCP response. Profiling is scoped to the attached tab target's JavaScript VM, not the system or other debugging targets.
+The bridge saves a generated private `.local/inspections/<UUID>/profile.cpuprofile` and returns only its path, summary, and routing `profileID`. Import the file into Chrome DevTools' JavaScript profiler or compatible tooling. Function names/URLs are sanitized; raw samples do not enter model context through the MCP response. Profiling is scoped to the attached tab target's JavaScript VM, not the system or other debugging targets.
 
 ## Performance timeline traces
 
@@ -69,7 +72,7 @@ Each profile is retained for retry if file persistence fails. After retrieving i
 
 ## Activation and tests
 
-Reload the unpacked extension and reconnect `chrome` to discover the nine added tools (25 total with verified recordings). In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project using that Chrome profile. No configuration, approvals or live bridge are changed by tests.
+Reload the unpacked extension in each opted-in profile and reconnect `chrome` to discover the nine added tools (**27 total** including verified recordings and profile routing). Recording also adds the `offscreen` permission; accept updated permissions if Chrome prompts. In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project and connected profile using that daemon. No configuration, approvals or live bridge are changed by tests.
 
 `npm run check` exercises ownership, schema bounds, redaction, navigation/redirects, body opt-in, eviction, cancellation races, shared debugger leases, artifact privacy and MCP output stripping. The isolated real-Chrome regression verifies actual network/console events, uncaught errors, response bodies, CPU samples and performance timeline events:
 

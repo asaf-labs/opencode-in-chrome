@@ -1,12 +1,27 @@
 import { Recordings } from './recordings.js';
 import { DebuggerSessions } from './debugger-sessions.js';
 import { Inspections } from './inspections.js';
+import { parseFrameRef, scopeSnapshot, combineSnapshots } from './frame-refs.js';
 
 export class SessionBrowser {
   bindings = {};
   documents = new Map();
+  frameDocuments = new Map();
   enabled = false;
   clickingTabs = new Set();
+  groupWork = new Map();
+  sessionWork = new Map();
+
+  serial(map, key, work) {
+    const next = (map.get(key) || Promise.resolve()).catch(() => {}).then(work);
+    map.set(key, next);
+    void next
+      .finally(() => {
+        if (map.get(key) === next) map.delete(key);
+      })
+      .catch(() => {});
+    return next;
+  }
 
   constructor(chrome, publish = () => {}) {
     this.chrome = chrome;
@@ -24,11 +39,12 @@ export class SessionBrowser {
       const tabs = [];
       for (const owned of binding.tabs) {
         try {
-          tabs.push(this.info(await this.chrome.tabs.get(owned.id)));
+          tabs.push({ ...owned, ...this.info(await this.chrome.tabs.get(owned.id)) });
         } catch {}
       }
       this.bindings[sessionID] = {
         ...binding,
+        lastActivity: binding.lastActivity || Date.now(),
         tabs,
         currentTabID: tabs.some((t) => t.id === binding.currentTabID)
           ? binding.currentTabID
@@ -59,13 +75,19 @@ export class SessionBrowser {
       if (!/^https?:/.test(tab.url || '') || tab.status === 'loading') return;
       if (this.enabled)
         await this.chrome.scripting.executeScript({
-          target: { tabId: tabID },
+          target: { tabId: tabID, allFrames: true },
           files: ['content.js'],
         });
       await this.chrome.scripting.executeScript({
-        target: { tabId: tabID },
-        func: (enabled) => globalThis.__opencodeChrome?.setEnabled(enabled),
-        args: [this.enabled],
+        target: { tabId: tabID, allFrames: true },
+        func: (enabled, hidden) => {
+          globalThis.__opencodeChrome?.setEnabled(enabled);
+          globalThis.__opencodeChrome?.setIndicatorHidden(hidden);
+        },
+        args: [
+          this.enabled,
+          !!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)?.indicatorHidden,
+        ],
       });
     } catch {
       /* A navigating or protected page can’t display an overlay yet. */
@@ -73,7 +95,14 @@ export class SessionBrowser {
   }
 
   async mark(sessionID, tab) {
+    return this.serial(this.groupWork, sessionID, () => this.markGroup(sessionID, tab));
+  }
+
+  async markGroup(sessionID, tab) {
     const binding = this.bindings[sessionID];
+    if (!binding?.tabs.some((owned) => owned.id === tab.id)) return;
+    tab = await this.chrome.tabs.get(tab.id).catch(() => null);
+    if (!tab) return;
     await this.chrome.action.setBadgeText({ text: this.enabled ? 'AI' : '', tabId: tab.id });
     await this.chrome.action.setBadgeBackgroundColor({ color: '#f97316', tabId: tab.id });
     // Groups are per window; a session can have tabs in several windows.
@@ -89,10 +118,15 @@ export class SessionBrowser {
         ...(groupID === undefined ? {} : { groupId: groupID }),
       });
       groups[tab.windowId] = groupID;
+      // Consolidate earlier races, but move only verified owned tabs, never personal tabs.
+      for (const owned of binding.tabs) {
+        const other = await this.chrome.tabs.get(owned.id).catch(() => null);
+        if (other?.windowId === tab.windowId && other.groupId !== groupID)
+          await this.chrome.tabs.group({ tabIds: [other.id], groupId: groupID });
+      }
       await this.chrome.tabGroups.update(groupID, {
         title: `OpenCode · ${sessionID.slice(-6)}${this.enabled ? '' : ' · disabled'}`,
         color: this.enabled ? 'orange' : 'grey',
-        collapsed: false,
       });
       await this.save(sessionID);
     } catch {
@@ -111,6 +145,14 @@ export class SessionBrowser {
     }
   }
 
+  async setIndicatorHidden(tabID, hidden) {
+    const entry = this.owner(tabID);
+    if (!entry) throw new Error('Tab is not agent-owned.');
+    entry[1].tabs.find((tab) => tab.id === tabID).indicatorHidden = !!hidden;
+    await this.save(entry[0]);
+    await this.overlay(tabID);
+  }
+
   async updated(tabID, changeInfo, tab) {
     const entry = this.owner(tabID);
     if (!entry) return;
@@ -119,9 +161,13 @@ export class SessionBrowser {
       binding.tabs.find((t) => t.id === tabID),
       this.info(tab),
     );
-    if (changeInfo.url) this.documents.delete(tabID);
-    if (changeInfo.url && !/^https?:\/\//.test(changeInfo.url))
-      await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
+    if (changeInfo.url) {
+      binding.lastActivity = Date.now();
+      this.documents.delete(tabID);
+      this.frameDocuments.delete(tabID);
+      if (!/^https?:\/\//.test(changeInfo.url))
+        await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
+    }
     if (changeInfo.status === 'complete') await this.overlay(tabID);
     await this.save(sessionID);
   }
@@ -167,7 +213,12 @@ export class SessionBrowser {
     const binding = (this.bindings[sessionID] ||= { tabs: [] });
     binding.paused = paused;
     binding.generation = crypto.randomUUID();
-    await Promise.all(binding.tabs.map((tab) => this.inspections.remove(tab.id)));
+    await Promise.all(
+      binding.tabs.flatMap((tab) => [
+        this.inspections.remove(tab.id),
+        this.recordings.removed(tab.id),
+      ]),
+    );
     await this.save(sessionID);
     if (paused) this.publish({ type: 'pause', sessionID });
   }
@@ -176,6 +227,7 @@ export class SessionBrowser {
     this.documents.delete(tabID);
     await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
     await this.debuggers.clear(tabID);
+    this.frameDocuments.delete(tabID);
     for (const [sessionID, binding] of Object.entries(this.bindings)) {
       if (!binding.tabs.some((tab) => tab.id === tabID)) continue;
       binding.tabs = binding.tabs.filter((tab) => tab.id !== tabID);
@@ -191,6 +243,7 @@ export class SessionBrowser {
     if (!entry) return;
     const [sessionID, binding] = entry;
     if (binding.tabs.some((owned) => owned.id === tab.id)) return;
+    binding.lastActivity = Date.now();
     binding.tabs.push(this.info(tab));
     binding.currentTabID = tab.id;
     await this.save(sessionID);
@@ -201,6 +254,7 @@ export class SessionBrowser {
     for (const binding of Object.values(this.bindings)) binding.generation = crypto.randomUUID();
     await this.save();
     this.documents.clear();
+    this.frameDocuments.clear();
   }
 
   async suspend() {
@@ -237,6 +291,29 @@ export class SessionBrowser {
   }
 
   async run(command) {
+    // Stop controls must be able to interrupt pending attachment/capture rather than queue behind it.
+    if (['cancel_recording', 'stop_inspection'].includes(command.tool))
+      return this.execute(command);
+    // Register arriving work immediately, even if it must wait behind maintenance.
+    if (this.bindings[command.sessionID])
+      this.bindings[command.sessionID].lastActivity = Date.now();
+    const tabID = command.args?.tabID ?? this.bindings[command.sessionID]?.currentTabID;
+    if (command.tool === 'click' && this.clickingTabs.has(tabID))
+      throw new Error('A click is already in progress for this tab.');
+    return this.serial(this.sessionWork, command.sessionID, async () => {
+      const binding = this.assert(command);
+      binding.lastActivity = Date.now();
+      await this.save(command.sessionID);
+      try {
+        return await this.execute(command);
+      } finally {
+        binding.lastActivity = Date.now();
+        await this.save(command.sessionID);
+      }
+    });
+  }
+
+  async execute(command) {
     const binding = this.assert(command),
       args = command.args || {};
     if (command.tool === 'start_recording') return this.recordings.start(command);
@@ -305,6 +382,7 @@ export class SessionBrowser {
       if (!['http:', 'https:'].includes(url.protocol))
         throw new Error('Only HTTP/HTTPS navigation is supported.');
       this.documents.delete(tabID);
+      this.frameDocuments.delete(tabID);
       const navigated = await this.chrome.tabs.update(tabID, { url: url.href });
       Object.assign(
         binding.tabs.find((t) => t.id === tabID),
@@ -352,42 +430,142 @@ export class SessionBrowser {
       throw new Error('Page is still loading; retry read_page shortly.');
     if (!/^https?:/.test(tab.url || ''))
       throw new Error('Navigate this tab to a website before reading or interacting with it.');
-    await this.chrome.scripting.executeScript({ target: { tabId: tabID }, files: ['content.js'] });
+    const scoped = args.ref ? parseFrameRef(args.ref) : { frameID: args.frameID ?? 0 };
+    const frameID = scoped.frameID;
+    if (!Number.isSafeInteger(frameID) || frameID < 0) throw new Error('Invalid frame ID.');
+    if (frameID !== 0 && !this.frameDocuments.get(tabID)?.has(frameID))
+      throw new Error('Frame is not in the latest snapshot. Call read_page again.');
+    const target =
+      command.tool === 'read_page' && args.frameID === undefined
+        ? { tabId: tabID, allFrames: true }
+        : { tabId: tabID, frameIds: [frameID] };
+    await this.chrome.scripting.executeScript({ target, files: ['content.js'] });
     this.assert(command);
+    if (command.tool === 'read_page') {
+      const results = await this.chrome.scripting.executeScript({
+        target,
+        func: (indicatorHidden) => {
+          try {
+            return globalThis.__opencodeChrome.run('read_page', { indicatorHidden });
+          } catch (error) {
+            return { error: error.message };
+          }
+        },
+        args: [!!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)?.indicatorHidden],
+      });
+      this.assert(command);
+      const frames =
+        args.frameID === undefined ? new Map() : this.frameDocuments.get(tabID) || new Map();
+      for (const entry of results) {
+        const id = entry.frameId ?? frameID;
+        if (entry.result?.documentID && !entry.result.error) {
+          frames.set(id, entry.result.documentID);
+          if (id === 0) this.documents.set(tabID, entry.result.documentID);
+        } else frames.delete(id);
+      }
+      this.frameDocuments.set(tabID, frames);
+      const result =
+        args.frameID === undefined
+          ? combineSnapshots(results)
+          : scopeSnapshot(results[0]?.result || {}, frameID);
+      if (result.error || !result.documentID)
+        throw new Error(result.error || 'Frame returned no snapshot.');
+      return { tabID, ...result };
+    }
     const results = await this.chrome.scripting.executeScript({
-      target: { tabId: tabID },
+      target: { tabId: tabID, frameIds: [frameID] },
       func: (tool, input) => globalThis.__opencodeChrome.run(tool, input),
       args: [
         command.tool,
-        { ...args, documentID: this.documents.get(tabID), commandID: command.id },
+        {
+          ...args,
+          indicatorHidden: !!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)
+            ?.indicatorHidden,
+          ...(scoped.ref ? { ref: scoped.ref } : {}),
+          documentID:
+            frameID === 0
+              ? this.documents.get(tabID)
+              : this.frameDocuments.get(tabID)?.get(frameID),
+          commandID: command.id,
+        },
       ],
     });
     this.assert(command);
     const result = results[0]?.result;
     if (!result) throw new Error('Page returned no result.');
-    if (command.tool === 'read_page') this.documents.set(tabID, result.documentID);
-    if (command.tool === 'click') return this.#click(command, tabID, result.clickTarget);
-    return { tabID, ...result };
+    if (command.tool === 'click')
+      return this.#click(command, tabID, { ...result.clickTarget, frameID, ref: scoped.ref });
+    return { tabID, ...(frameID ? { frameID } : {}), ...result };
   }
 
   #assertClick(command, tabID, target) {
     this.assert(command);
     if (this.owner(tabID)?.[0] !== command.sessionID)
       throw new Error('This session no longer owns the click target.');
-    if (this.documents.get(tabID) !== target.documentID)
+    const documentID = target.frameID
+      ? this.frameDocuments.get(tabID)?.get(target.frameID)
+      : this.documents.get(tabID);
+    if (documentID !== target.documentID)
       throw new Error('Page changed before the click. Call read_page again.');
   }
 
   async #validateClick(command, tabID, target) {
     this.#assertClick(command, tabID, target);
     const results = await this.chrome.scripting.executeScript({
-      target: { tabId: tabID },
+      target: { tabId: tabID, frameIds: [target.frameID || 0] },
       func: (input) => globalThis.__opencodeChrome?.validateClick(input),
       args: [{ ...command.args, ...target, commandID: command.id }],
     });
     this.#assertClick(command, tabID, target);
     if (results[0]?.result?.valid !== true)
       throw new Error('Click target could not be validated. Call read_page again.');
+  }
+
+  async #inputPoint(command, tabID, target) {
+    if (!target.frameID) return { x: target.x, y: target.y };
+    this.#assertClick(command, tabID, target);
+    const contexts = await this.chrome.scripting.executeScript({
+      target: { tabId: tabID, allFrames: true },
+      func: () => globalThis.__opencodeChrome?.frameContext(),
+    });
+    this.#assertClick(command, tabID, target);
+    const child = contexts.find((entry) => entry.frameId === target.frameID)?.result;
+    if (
+      !child ||
+      child.documentID !== target.documentID ||
+      JSON.stringify(child.framePath) !== JSON.stringify(target.framePath)
+    )
+      throw new Error('Click frame changed. Call read_page again.');
+    let point = { x: target.x, y: target.y, ...child };
+    for (let depth = child.framePath.length - 1; depth >= 0; depth--) {
+      const framePath = child.framePath.slice(0, depth);
+      const parent = contexts.find(
+        (entry) => JSON.stringify(entry.result?.framePath) === JSON.stringify(framePath),
+      );
+      if (
+        !parent?.result ||
+        this.frameDocuments.get(tabID)?.get(parent.frameId) !== parent.result.documentID
+      )
+        throw new Error('Containing frame changed or is inaccessible. Call read_page again.');
+      const projected = await this.chrome.scripting.executeScript({
+        target: { tabId: tabID, frameIds: [parent.frameId] },
+        func: (input) => globalThis.__opencodeChrome.projectFramePoint(input),
+        args: [
+          {
+            ...point,
+            framePath,
+            documentID: parent.result.documentID,
+            childIndex: child.framePath[depth],
+            commandID: command.id,
+          },
+        ],
+      });
+      this.#assertClick(command, tabID, target);
+      point = projected[0]?.result;
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+        throw new Error('Containing frame could not validate the click point.');
+    }
+    return { x: point.x, y: point.y };
   }
 
   async #click(command, tabID, target) {
@@ -404,6 +582,7 @@ export class SessionBrowser {
     let pressAttempted = false;
     try {
       await this.#validateClick(command, tabID, target);
+      const point = await this.#inputPoint(command, tabID, target);
       try {
         lease = await this.debuggers.acquire(command, tabID);
       } catch {
@@ -413,13 +592,15 @@ export class SessionBrowser {
         );
       }
       this.#assertClick(command, tabID, target);
-      const point = { x: target.x, y: target.y };
       await this.chrome.debugger.sendCommand(debuggee, 'Input.dispatchMouseEvent', {
         type: 'mouseMoved',
         ...point,
         buttons: 0,
       });
       await this.#validateClick(command, tabID, target);
+      const afterHover = await this.#inputPoint(command, tabID, target);
+      if (afterHover.x !== point.x || afterHover.y !== point.y)
+        throw new Error('Containing iframe moved before the click. Call read_page again.');
       pressAttempted = true;
       await this.chrome.debugger.sendCommand(debuggee, 'Input.dispatchMouseEvent', {
         type: 'mousePressed',
@@ -437,7 +618,12 @@ export class SessionBrowser {
         clickCount: 1,
       });
       this.assert(command);
-      return { tabID, dispatched: true, applicationAccepted: null };
+      return {
+        tabID,
+        ...(target.frameID ? { frameID: target.frameID } : {}),
+        dispatched: true,
+        applicationAccepted: null,
+      };
     } catch (error) {
       if (pressAttempted)
         throw new Error(
@@ -490,6 +676,7 @@ export class SessionBrowser {
       this.documents.set(tabID, target.documentID);
       nested.args.ref = target.ref;
     }
-    return this.run(nested);
+    // The parent recorded step already holds this session's execution lock.
+    return this.execute(nested);
   }
 }

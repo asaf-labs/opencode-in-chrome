@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="370" viewBox="0 0 960 370" role="img" aria-labelledby="title desc">
   <title id="title">OpenCode in Chrome control illustration</title>
-  <desc id="desc">An illustrated browser with an orange session-owned tab group and independent agent cursor. This is an illustration, not a captured screenshot.</desc>
+  <desc id="desc">An illustrated browser with an orange session-owned tab group, small dismissible activity dot, and independent agent cursor. This is an illustration, not a captured screenshot.</desc>
   <rect width="960" height="370" rx="20" fill="#101014"/>
   <rect x="24" y="24" width="912" height="320" rx="14" fill="#18181f" stroke="#3f3f46"/>
   <path d="M24 70H936" stroke="#3f3f46"/>
@@ -8,9 +8,8 @@
   <text x="56" y="54" fill="#fff7ed" font-family="system-ui,sans-serif" font-size="13">OpenCode · session A</text>
   <rect x="250" y="36" width="160" height="25" rx="8" fill="#27272a"/>
   <text x="263" y="54" fill="#d4d4d8" font-family="system-ui,sans-serif" font-size="13">Session-owned tab</text>
-  <rect x="659" y="91" width="249" height="34" rx="17" fill="#24170f" stroke="#fb923c"/>
-  <circle cx="680" cy="108" r="4" fill="#fb923c"/>
-  <text x="694" y="113" fill="#ffedd5" font-family="system-ui,sans-serif" font-size="12">OpenCode · Typing</text>
+  <circle cx="896" cy="104" r="12" fill="#24170f" stroke="#fb923c"/>
+  <circle cx="896" cy="104" r="4" fill="#fb923c"/>
   <text x="63" y="139" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="25" font-weight="600">Your conversation. Its own tabs.</text>
   <text x="63" y="175" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="16">Open → read → act → verify</text>
   <rect x="62" y="203" width="530" height="52" rx="8" fill="#27272a" stroke="#fb923c" stroke-width="2"/>

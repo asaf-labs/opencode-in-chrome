@@ -361,7 +361,7 @@ test('a full global install runs its shared daemon outside the package cache', a
       stderr: 'pipe',
     }),
   );
-  assert.equal((await client.listTools()).tools.length, 25);
+  assert.equal((await client.listTools()).tools.length, 27);
   assert.equal((await sharedStatus(config)).bridgeID, started.bridgeID);
   await client.close();
 });

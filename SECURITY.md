@@ -1,5 +1,11 @@
 # Security model
 
+## Tab cleanup and archives
+
+Automatic closing is opt-in per Chrome profile. Archives contain URL/title/session metadata in trusted-context `chrome.storage.local`, not page contents or credentials fetched separately. URLs themselves can contain sensitive data; they are not synced by this extension, but remain accessible to the local Chrome user. Restore uses the same profile and requires browser access enabled. The popup can delete saved URLs. Never publish extension storage in diagnostics. Ownership is checked from the session binding, not group membership. Activity checks and close operations are not atomic; unsaved forms cannot be reliably detected and are not preserved. Session inactivity alone does not prove an agent has finished.
+
+The archive delay is configurable per profile from 1 to 168 whole hours (default 3). Previously enabled fixed-delay profiles retain 24 hours on upgrade unless changed explicitly. Shortening it can close already-idle eligible tabs on the next check. Delay updates are validated and persisted before use, and cleanup rechecks the live delay before closing; invalid delays do not authorize closing. Changing the delay alone never enables automatic archiving.
+
 This is a browser-automation prototype, not a sandbox for an untrusted agent. Session-owned tabs isolate **which tabs** an agent can manipulate. They do not isolate cookies, accounts, network access, or the privileges of the local OpenCode process.
 
 ## What could be dangerous?
@@ -16,15 +22,19 @@ This is a browser-automation prototype, not a sandbox for an untrusted agent. Se
 
 The extension cannot reliably determine whether an arbitrary click is destructive. An orange cursor is visual feedback, **not an authorization check**. A website can also imitate a page indicator, so the page overlay is not a trusted security signal.
 
+The activity dot is dismissible without revoking browser access; the Chrome tab group and AI extension badge remain ownership markers. Hiding it is not a stop/disable action. Content-script hide messages are restricted to their own verified owned tab, and the preference is stored with temporary ownership records. Only the dot/panel buttons intercept page pointer input; cursor/highlight layers remain pointer-transparent.
+
 ## Implemented safeguards
 
 - **Loopback only:** the bridge listens on `127.0.0.1`, not a public interface.
 - **Random shared token:** setup generates 32 random bytes. HTTP status reads require the token; WebSocket connections authenticate before receiving commands or replacing the connected browser. Tokens are not placed in URLs.
 - **Host/origin checks:** unexpected hosts and ordinary website origins are rejected. Chrome-extension origins still need the token. The extension restricts the configured bridge URL to loopback HTTP.
 - **Session ownership:** browser actions verify both session generation and owned tab ID. Existing personal tabs and other sessions' tabs cannot be targeted through the tools.
+- **Profile opt-in and routing:** only paired extension installations are discoverable. Each regular Chrome profile stores its own random identity and enabled preference. Profile connections use separate ownership maps, command queues, pending results, and disable/disconnect handling. Conversation profile choices are persisted; an offline or disabled profile never causes fallback to another account. Profile-scoped refs and explicit profile checks on numeric tab IDs guard against cross-profile ambiguity. Simultaneous duplicate identities are rejected.
 - **No arbitrary page evaluation tool:** model-visible tools are a fixed collection of tab and DOM operations. No shell command, filesystem API, cookie API, or arbitrary JavaScript evaluation is exposed by this MCP server.
 - **Isolated-world execution:** injected content scripts use Chrome's default isolated world, separate from the page's JavaScript globals. Page content is returned as data.
-- **Browser-level clicks:** the worker briefly attaches `chrome.debugger` only to a verified session-owned tab and sends fixed `Input.dispatchMouseEvent` commands. Content scripts hit-test the ref before input and again after mouse movement; stale, disabled, moved, or covered targets fail closed. The worker detaches in cleanup and never exposes arbitrary CDP commands to tools. Input dispatch is not proof of application acceptance.
+- **Frame-scoped actions:** iframe refs encode the observed Chrome frame ID and resolve only within the owned tab. Document checks prevent reuse after frame navigation. Browser-level clicks map through intrinsic WindowProxy ancestry and validate containing-frame geometry/occlusion before mouse-down; page messages and DOM-supplied routing markers are not trusted. Inaccessible or unsupported frame geometry is rejected.
+- **Browser-level clicks:** the worker acquires a debugger lease only for a verified session-owned tab and sends fixed `Input.dispatchMouseEvent` commands. Content scripts hit-test the ref before input and again after mouse movement; stale, disabled, moved, or covered targets fail closed. The click lease is released in cleanup; the attachment remains only while other authorized recording/inspection leases use it. Tools never expose arbitrary CDP commands. Input dispatch is not proof of application acceptance.
 - **Credential storage separation:** extension local/session storage is restricted to trusted extension contexts. Injected content scripts cannot read the stored pairing token.
 - **No password values in snapshots:** native password-input values are excluded. This does not guarantee that all secrets on a page are concealed; other inputs, page text and screenshots can contain sensitive data.
 - **Disable control:** disabling access rejects bridge work, invalidates generations, and notifies owned-page content scripts to stop pending interactions.
@@ -54,6 +64,8 @@ Exports use generated paths beneath ignored `.local/recordings/`, private POSIX 
 
 The added `offscreen` permission enables a bundled hidden encoder document; it does not request screen-sharing or microphone access. Encoding and capture are bounded, cancelled on disable/disconnect, and limited to authenticated extension messages and session-owned tabs. Previously exported files are never deleted automatically.
 
+Inspection/recording state is local to each opted-in Chrome profile and session; changing the conversation's profile never retargets existing capture or reads. A profile switch alone does not cancel previously authorized capture: stop/cancel first, or return explicitly to the original profile to stop it (inspection expires after five minutes). Active inspection and retained recording plans block idle tab cleanup. Artifact responses identify their profile without passing routing metadata into strict artifact payload schemas. Post-export recording cleanup includes the original profile ID so a concurrent selection change cannot clear a recording in a different profile.
+
 `run_recording_step` is a macro that executes the plan's browser actions inside the extension. OpenCode approval applies to the macro, not to separate nested click/type calls. Require approval for `chrome_run_recording_step` when using supervised actions; the supplied `chrome_*` ask rule already covers it. Existing custom rules for individual interaction tools alone do not. The feature does not modify user permission rules or saved approvals.
 
 ## Trust boundaries and limitations
@@ -68,6 +80,9 @@ The added `offscreen` permission enables a bundled hidden encoder document; it d
 8. Chrome extensions in an incognito profile or across separate Chrome profiles are not managed by this connection unless separately installed and paired.
 9. Viewport capture uses Chrome's active-tab API. The extension verifies the target before and after capture, but this is a best-effort race check: avoid switching tabs during screenshots. It is not an atomic tab-specific capture API.
 10. The required `debugger` permission is powerful and can access more than mouse input; the extension's implementation limits its use, not the Chrome permission itself. Chrome may show a debugging banner, and DevTools or enterprise policy may block attachment. DOM validation and input dispatch are not atomic: the page may change between them. Cancellation after mouse-down cannot undo a handler or webhook that already ran; inspect state before retrying.
+11. Snapshots may include cross-origin iframe content wherever Chrome grants script access. Treat embedded page content as untrusted too; private embedded forms or account data may reach the model provider. The same tab-ownership and profile/account limitations apply to frames. Frame geometry validation is best effort and does not make input dispatch atomic.
+12. Profile IDs and labels are routing metadata, not authentication or proof of Google/account identity. Names are user-provided and untrusted as instructions. All profile connections share the local pairing secret; trusted local software with that secret can impersonate a profile. Do not clone profile-local extension storage. Incognito is not a separate supported profile identity. Disabling a profile stops automation, but does not delete its metadata or session-selection history.
+13. `.local/profile-routing.json` contains profile labels/IDs and conversation selections, not pairing tokens or page contents. It is written atomically (POSIX mode `0600`) and ignored by Git. Corrupt or unwritable routing state fails closed rather than resetting selections or sending browser actions. Deliberately deleting this file resets routing history; do not do so as a routine troubleshooting step.
 
 ## Recommended deployment
 

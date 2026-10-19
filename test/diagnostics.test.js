@@ -66,3 +66,40 @@ test('occupied loopback port produces actionable bridge startup guidance', async
     return true;
   });
 });
+
+test('doctor distinguishes current multi-profile routing from stale or unwritable bridge state', async () => {
+  const status = {
+    connected: true,
+    browserEnabled: true,
+    extensionProtocol: 3,
+    version: '0.7.0',
+    routingHealthy: true,
+    profiles: [{ connected: true, enabled: true, legacy: false }],
+  };
+  const inspect = (value) =>
+    inspectBridge(config, {
+      expectedVersion: '0.7.0',
+      fetchStatus: async () => Response.json(value),
+    });
+  assert.equal(
+    (await inspect(status)).every((check) => check.status === 'pass'),
+    true,
+  );
+  assert.equal(
+    (await inspect({ ...status, version: '0.6.0' })).find((check) => check.id === 'bridge_version')
+      .status,
+    'warn',
+  );
+  assert.equal(
+    (await inspect({ ...status, routingHealthy: false })).find(
+      (check) => check.id === 'profile_routing',
+    ).status,
+    'fail',
+  );
+  assert.equal(
+    (
+      await inspect({ ...status, profiles: [{ connected: true, enabled: true, legacy: true }] })
+    ).find((check) => check.id === 'profile_opt_in').status,
+    'warn',
+  );
+});

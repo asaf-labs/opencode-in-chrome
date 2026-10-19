@@ -44,6 +44,119 @@ test('snapshot exposes visible controls without password values', (t) => {
   assert.equal(snapshot.elements.find((e) => e.tag === 'select').options[1].value, 'b');
 });
 
+test('searchable portalled multiselect exposes cmdk options as browser click refs', async (t) => {
+  const { run, document, window } = page(t);
+  const portal = document.createElement('div');
+  portal.innerHTML = `<div role="dialog"><input id="portal-search" role="combobox" aria-label="Search portals" aria-expanded="true">
+    <div role="listbox" aria-multiselectable="true">
+      <div id="coupa" role="option" aria-selected="true" cmdk-item=""><div aria-hidden="true"><svg></svg></div><span>Coupa</span></div>
+      <div id="other" role="option" cmdk-item=""><span>Other portal</span></div>
+    </div></div>`;
+  document.body.append(portal);
+  document.getElementById('portal-search').addEventListener('input', () => {
+    document.getElementById('other').hidden = true;
+  });
+  const first = run('read_page');
+  const search = first.elements.find((element) => element.label === 'Search portals');
+  assert.equal(search.type, 'combobox');
+  assert.equal(search.expanded, true);
+  await run('type', { ref: search.ref, documentID: first.documentID, text: 'Coupa' });
+  const snapshot = run('read_page');
+  const coupa = snapshot.elements.find((element) => element.label === 'Coupa');
+  assert.equal(coupa.type, 'option');
+  assert.equal(coupa.ariaSelected, true);
+  assert.equal(
+    snapshot.elements.some((element) => element.label === 'Other portal'),
+    false,
+  );
+  document.elementFromPoint = () => document.querySelector('#coupa span');
+  const args = { ref: coupa.ref, documentID: snapshot.documentID };
+  const { clickTarget } = await run('click', args);
+  assert.equal(window.__opencodeChrome.validateClick({ ...args, ...clickTarget }).valid, true);
+});
+
+test('custom checkbox, menu, tab, and switch roles expose labels and ARIA state', async (t) => {
+  const { run, document } = page(t);
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    `<span id="coupa-name">Coupa</span>
+    <button role="checkbox" aria-labelledby="coupa-name" aria-checked="false">Decorative text</button>
+    <div role="menuitemcheckbox" aria-label="Portal option" aria-checked="mixed"></div>
+    <div role="menuitemradio" aria-label="Radio option" aria-checked="true"></div>
+    <div role="switch" aria-label="Enabled" aria-checked="false"></div>
+    <div role="tab" aria-label="Invoices" aria-selected="true"></div>
+    <div role="option" aria-label="Disabled option" aria-disabled="true"></div>`,
+  );
+  const snapshot = run('read_page');
+  const coupa = snapshot.elements.find((element) => element.label === 'Coupa');
+  assert.equal(coupa.type, 'checkbox');
+  assert.equal(coupa.checked, false);
+  assert.equal(
+    snapshot.elements.find((element) => element.label === 'Portal option').checked,
+    'mixed',
+  );
+  assert.equal(snapshot.elements.find((element) => element.label === 'Radio option').checked, true);
+  assert.equal(snapshot.elements.find((element) => element.label === 'Enabled').checked, false);
+  assert.equal(
+    snapshot.elements.find((element) => element.label === 'Invoices').ariaSelected,
+    true,
+  );
+  const disabled = snapshot.elements.find((element) => element.label === 'Disabled option');
+  assert.equal(disabled.disabled, true);
+  assert.throws(
+    () => run('click', { ref: disabled.ref, documentID: snapshot.documentID }),
+    /disabled/,
+  );
+});
+
+test('visible checkbox labels remain clickable when the native input is visually hidden', async (t) => {
+  const { run, document } = page(t);
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    `<input id="hidden-checkbox" type="checkbox" style="display:none">
+    <label for="hidden-checkbox">Coupa</label><label>Unassociated decoration</label>`,
+  );
+  const snapshot = run('read_page');
+  const label = snapshot.elements.find((element) => element.tag === 'label');
+  assert.equal(label.label, 'Coupa');
+  assert.equal(
+    snapshot.elements.some((element) => element.label === 'Unassociated decoration'),
+    false,
+  );
+  document.elementFromPoint = () => document.querySelector('label');
+  assert.ok((await run('click', { ref: label.ref, documentID: snapshot.documentID })).clickTarget);
+});
+
+test('open popup controls get refs ahead of background tables at the snapshot cap', (t) => {
+  const { run, document } = page(t);
+  for (let index = 0; index < 310; index++) {
+    const button = document.createElement('button');
+    button.textContent = `Background action ${index}`;
+    document.body.append(button);
+  }
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    '<div role="listbox"><div role="option">Coupa</div></div>',
+  );
+  const snapshot = run('read_page');
+  assert.equal(snapshot.elements.length, 300);
+  assert.equal(snapshot.elements[0].label, 'Coupa');
+  assert.equal(snapshot.elementsTruncated, true);
+  assert.equal(snapshot.totalElements, 317);
+});
+
+test('newly discovered custom-control refs still expire on a new snapshot', async (t) => {
+  const { run, document } = page(t);
+  document.body.insertAdjacentHTML('beforeend', '<div role="option">Coupa</div>');
+  const first = run('read_page');
+  const option = first.elements.find((element) => element.label === 'Coupa');
+  run('read_page');
+  assert.throws(
+    () => run('click', { ref: option.ref, documentID: first.documentID }),
+    /ref expired/,
+  );
+});
+
 test('form interaction updates values and dispatches page events', async (t) => {
   const { run, document } = page(t),
     snapshot = run('read_page');
@@ -148,6 +261,47 @@ test('agent cursor highlights a target without following the user mouse or pollu
   );
   assert.equal(clicks, 0);
   assert.match(host.shadowRoot.querySelector('.status').textContent, /Clicking/);
+});
+
+test('activity dot starts hidden, expands on click, can be hidden without disabling actions, and fades at idle', async (t) => {
+  const messages = [];
+  const { run, document, window } = page(t, {
+    runtime: {
+      sendMessage: async (message) => {
+        messages.push(message);
+      },
+    },
+  });
+  const shadow = document.getElementById('opencode-agent-overlay').shadowRoot;
+  const indicator = shadow.querySelector('.indicator');
+  const toggle = shadow.querySelector('.toggle');
+  const panel = shadow.querySelector('.panel');
+  assert.equal(indicator.hidden, true);
+  assert.equal(panel.hidden, true);
+  let idle;
+  const timeout = window.setTimeout.bind(window);
+  window.setTimeout = (callback, ms) =>
+    ms === 1800 ? ((idle = callback), 0) : timeout(callback, ms);
+  const snapshot = run('read_page');
+  assert.equal(indicator.hidden, false);
+  assert.equal(snapshot.elements.length, 6);
+  toggle.click();
+  assert.equal(panel.hidden, false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  shadow.querySelector('.hide').click();
+  assert.equal(indicator.hidden, true);
+  assert.equal(messages[0].type, 'hide-activity-indicator');
+  await run('click', { ref: snapshot.elements[0].ref, documentID: snapshot.documentID });
+  assert.equal(indicator.hidden, true);
+  assert.equal(shadow.querySelector('.cursor').style.opacity, '1');
+  idle();
+  assert.equal(shadow.querySelector('.cursor').style.opacity, '0');
+  assert.equal(panel.hidden, true);
+  window.__opencodeChrome.setIndicatorHidden(false);
+  run('read_page');
+  assert.equal(indicator.hidden, false);
+  idle();
+  assert.equal(indicator.hidden, true);
 });
 
 test('disabling removes the indicator and cancels an action before its click', async (t) => {
@@ -261,10 +415,10 @@ test('click preparation rejects disabled, inert, and off-viewport targets', asyn
   const button = document.getElementById('button');
   const args = { ref: snapshot.elements[0].ref, documentID: snapshot.documentID };
   button.setAttribute('aria-disabled', 'true');
-  await assert.rejects(run('click', args), /disabled/);
+  assert.throws(() => run('click', args), /disabled/);
   button.removeAttribute('aria-disabled');
   button.setAttribute('inert', '');
-  await assert.rejects(run('click', args), /disabled/);
+  assert.throws(() => run('click', args), /disabled/);
   button.removeAttribute('inert');
   button.getBoundingClientRect = () => ({ left: -100, right: -10, top: 10, bottom: 30 });
   await assert.rejects(run('click', args), /outside the viewport/);

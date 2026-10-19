@@ -33,6 +33,10 @@ When changing the extension, reload it at `chrome://extensions`. When changing b
 
 The real-browser suite also verifies the [recording workflow](docs/recordings.md): it declares a task, excludes a failed attempt, captures verified actions including navigation, encodes WebM without FFmpeg, and checks playback metadata. Set `SAVE_RECORDING_DEMO=1` alongside `CHROME_BINARY` to retain its harmless local video/manifest under `.local/recordings/`. Production accounts and permission prompts are never driven by this test.
 
+It also verifies real network/console events, opt-in bodies, CPU samples and main-frame performance entries. The four real-Chrome regressions (clicks, iframes, recording, inspection) run sequentially to avoid competing startup fixtures. Profile-aware MCP/shared-HTTP tests separately exercise real artifact persistence and ensure raw capture payloads stay out of MCP output.
+
+For manual capture smoke testing, use a disposable Chrome profile and harmless local/public demo data. Reload/approve `offscreen`, discover all 27 tools after coordinating the shared-daemon restart, select that profile, and explicitly start inspection/recording on an owned tab. Verify body opt-in, stop/cancel during an action, private artifact exports, and disable/disconnect cleanup. Do not use signed-in production data or share raw artifact contents. Main-frame recording/performance limits and profile-switch behavior are documented in [recordings](docs/recordings.md) and [inspection](docs/inspection.md).
+
 ## Pull requests
 
 External contributors can fork this public MIT-licensed repo, create a branch, run `npm run check`, and open a PR against `main`. A PR does not grant push or merge access. Keep changes focused and include verification evidence.
@@ -45,3 +49,13 @@ External contributors can fork this public MIT-licensed repo, create a branch, r
 - Document behavior/installation changes in README.md and security changes in SECURITY.md.
 
 For a manual smoke test, use the public sandbox at `https://www.scrapethissite.com/`. Verify automatic tab creation, reading, form interaction, the orange agent cursor, disable/re-enable, and reconnect. Use a dedicated browser profile for testing changes.
+
+For the activity UI, verify there is no idle banner or page border; actions show a small dot and cursor, which fade when idle. Expand the dot, choose Hide for this tab, and confirm actions/cursor still work while the Chrome group/badge remain. Navigate/restart the worker and confirm hiding persists. Restore the dot from that tab's popup control. Confirm iframe snapshots do not produce duplicate dots and shadow UI never becomes an agent element ref.
+
+### Tab cleanup smoke test
+
+- Reload the updated extension in a disposable profile. Verify automatic archiving starts **off**, and indicator refresh/reconnection preserves a manually collapsed group.
+- Create several owned tabs concurrently in one conversation/window; verify they share one group. Personal tabs must never acquire ownership merely by being dragged into that group.
+- With the conversation inactive for 15 minutes and focus on a different tab, verify its group collapses. Groups containing active or personal tabs must remain alone.
+- Only in this disposable profile, enable automatic archiving and set Archive after (hours). Verify the new default is 3, an already-enabled legacy profile retains 24 until changed, and invalid values outside 1–168 whole hours are rejected. Verify eligible idle tabs save URLs before closing at the chosen boundary. Active, pinned, audible, loading, and Keep tabs must remain open; disconnect/disable must not initiate cleanup. Use `node --test test/lifecycle.test.js test/cleanup-settings.test.js` for deterministic clock/storage-failure/migration cases instead of changing your system clock or production ownership records.
+- Restore a saved URL and verify it opens as an owned tab in the same profile. Delete a saved URL and verify it disappears. Explain that restore does not recover unsaved forms or page state. Never include private archive URLs in screenshots or test reports.

@@ -32,7 +32,15 @@ export async function startTestBrowser(t) {
   });
   const endpoint = await new Promise((resolve, reject) => {
     let output = '';
-    const timeout = setTimeout(() => reject(new Error('Test Chrome did not start.')), 10000);
+    const timeout = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Test Chrome did not start. Startup diagnostics: ${output.slice(-2000) || 'no stderr output'}`,
+          ),
+        ),
+      20000,
+    );
     child.once('error', reject);
     child.once('exit', () => reject(new Error('Test Chrome exited before starting.')));
     child.stderr.on('data', (chunk) => {
@@ -93,6 +101,7 @@ export async function startTestBrowser(t) {
     return result.result.value;
   };
   await command('Page.enable');
+  const frameIDs = new Map();
   return {
     command,
     evaluate,
@@ -112,6 +121,25 @@ export async function startTestBrowser(t) {
       events.on('protocol', (message) => {
         if (message.sessionId === sessionId) callback(message.method, message.params);
       }),
+    contexts: async () => {
+      const { frameTree } = await command('Page.getFrameTree');
+      const frames = [];
+      const collect = (tree) => {
+        frames.push(tree.frame);
+        for (const child of tree.childFrames || []) collect(child);
+      };
+      collect(frameTree);
+      const result = [];
+      for (const frame of frames) {
+        if (!frameIDs.has(frame.id)) frameIDs.set(frame.id, frameIDs.size);
+        const { executionContextId } = await command('Page.createIsolatedWorld', {
+          frameId: frame.id,
+          worldName: 'opencode-test',
+        });
+        result.push({ frameId: frameIDs.get(frame.id), contextID: executionContextId });
+      }
+      return result;
+    },
     navigate: async (url) => {
       const loaded = once(events, 'Page.loadEventFired');
       const result = await command('Page.navigate', { url });
