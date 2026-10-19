@@ -24,6 +24,8 @@ The extension cannot reliably determine whether an arbitrary click is destructiv
 
 The activity dot is dismissible without revoking browser access; the Chrome tab group and AI extension badge remain ownership markers. Hiding it is not a stop/disable action. Content-script hide messages are restricted to their own verified owned tab, and the preference is stored with temporary ownership records. Only the dot/panel buttons intercept page pointer input; cursor/highlight layers remain pointer-transparent.
 
+Page-operation guard exceptions are caught inside the injected function and rethrown as worker/tool failures, rather than uncaught extension-script errors. This changes reporting only: moved/covered/stale targets still fail closed, uncertain outcomes after a press remain explicit, and no automatic action retry, guessed-coordinate fallback, or guard bypass is added. Genuine bridge connection failures remain visible and should be diagnosed separately.
+
 ## Implemented safeguards
 
 - **Loopback only:** the bridge listens on `127.0.0.1`, not a public interface.

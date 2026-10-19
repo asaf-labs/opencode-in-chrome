@@ -3,6 +3,11 @@ import { DebuggerSessions } from './debugger-sessions.js';
 import { Inspections } from './inspections.js';
 import { parseFrameRef, scopeSnapshot, combineSnapshots } from './frame-refs.js';
 
+function pageResult(result) {
+  if (typeof result?.opencodeError === 'string') throw new Error(result.opencodeError);
+  return result;
+}
+
 export class SessionBrowser {
   bindings = {};
   documents = new Map();
@@ -480,7 +485,13 @@ export class SessionBrowser {
     }
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID, frameIds: [frameID] },
-      func: (tool, input) => globalThis.__opencodeChrome.run(tool, input),
+      func: async (tool, input) => {
+        try {
+          return await globalThis.__opencodeChrome.run(tool, input);
+        } catch (error) {
+          return { opencodeError: error.message };
+        }
+      },
       args: [
         command.tool,
         {
@@ -497,7 +508,7 @@ export class SessionBrowser {
       ],
     });
     this.assert(command);
-    const result = results[0]?.result;
+    const result = pageResult(results[0]?.result);
     if (!result) throw new Error('Page returned no result.');
     if (command.tool === 'click')
       return this.#click(command, tabID, { ...result.clickTarget, frameID, ref: scoped.ref });
@@ -519,11 +530,17 @@ export class SessionBrowser {
     this.#assertClick(command, tabID, target);
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID, frameIds: [target.frameID || 0] },
-      func: (input) => globalThis.__opencodeChrome?.validateClick(input),
+      func: async (input) => {
+        try {
+          return await globalThis.__opencodeChrome?.validateClick(input);
+        } catch (error) {
+          return { opencodeError: error.message };
+        }
+      },
       args: [{ ...command.args, ...target, commandID: command.id }],
     });
     this.#assertClick(command, tabID, target);
-    if (results[0]?.result?.valid !== true)
+    if (pageResult(results[0]?.result)?.valid !== true)
       throw new Error('Click target could not be validated. Call read_page again.');
   }
 
@@ -532,10 +549,16 @@ export class SessionBrowser {
     this.#assertClick(command, tabID, target);
     const contexts = await this.chrome.scripting.executeScript({
       target: { tabId: tabID, allFrames: true },
-      func: () => globalThis.__opencodeChrome?.frameContext(),
+      func: async () => {
+        try {
+          return await globalThis.__opencodeChrome?.frameContext();
+        } catch (error) {
+          return { opencodeError: error.message };
+        }
+      },
     });
     this.#assertClick(command, tabID, target);
-    const child = contexts.find((entry) => entry.frameId === target.frameID)?.result;
+    const child = pageResult(contexts.find((entry) => entry.frameId === target.frameID)?.result);
     if (
       !child ||
       child.documentID !== target.documentID ||
@@ -555,7 +578,13 @@ export class SessionBrowser {
         throw new Error('Containing frame changed or is inaccessible. Call read_page again.');
       const projected = await this.chrome.scripting.executeScript({
         target: { tabId: tabID, frameIds: [parent.frameId] },
-        func: (input) => globalThis.__opencodeChrome.projectFramePoint(input),
+        func: async (input) => {
+          try {
+            return await globalThis.__opencodeChrome.projectFramePoint(input);
+          } catch (error) {
+            return { opencodeError: error.message };
+          }
+        },
         args: [
           {
             ...point,
@@ -567,7 +596,7 @@ export class SessionBrowser {
         ],
       });
       this.#assertClick(command, tabID, target);
-      point = projected[0]?.result;
+      point = pageResult(projected[0]?.result);
       if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y))
         throw new Error('Containing frame could not validate the click point.');
     }
@@ -657,11 +686,17 @@ export class SessionBrowser {
     this.assert(command);
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID },
-      func: (input) => globalThis.__opencodeChrome.run('inspect_conditions', input),
+      func: async (input) => {
+        try {
+          return await globalThis.__opencodeChrome.run('inspect_conditions', input);
+        } catch (error) {
+          return { opencodeError: error.message };
+        }
+      },
       args: [{ checks }],
     });
     this.assert(command);
-    return { passed: results[0]?.result?.passed === true };
+    return { passed: pageResult(results[0]?.result)?.passed === true };
   }
 
   async recordingAction(command, tabID, action) {
