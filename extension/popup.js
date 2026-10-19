@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let showingConnectionError = false;
 let cleanupView = '';
+let savingCleanup = false;
+let savedArchiveHours = 3;
 async function request(message) {
   const response = await chrome.runtime.sendMessage(message);
   if (response.error) throw new Error(response.error);
@@ -14,6 +16,9 @@ function error(error) {
 async function refresh() {
   const state = await request({ type: 'state' });
   $('auto-archive').checked = state.settings.autoArchive === true;
+  savedArchiveHours = state.settings.archiveAfterHours ?? 3;
+  if (!savingCleanup && document.activeElement !== $('archive-hours'))
+    $('archive-hours').value = state.settings.archiveAfterHours ?? 3;
   const view = JSON.stringify([state.ownedTabs, state.archives]);
   if (view !== cleanupView) {
     cleanupView = view;
@@ -75,14 +80,29 @@ async function refresh() {
     showingConnectionError = false;
   }
 }
-$('auto-archive').onchange = async () => {
+async function saveCleanup(event) {
+  const disabling = event?.target === $('auto-archive') && !$('auto-archive').checked;
+  const validHours = $('archive-hours').checkValidity();
+  if (!validHours && !disabling) {
+    $('archive-hours').reportValidity();
+    return;
+  }
+  savingCleanup = true;
   try {
-    await request({ type: 'cleanup-settings', autoArchive: $('auto-archive').checked });
+    await request({
+      type: 'cleanup-settings',
+      autoArchive: $('auto-archive').checked,
+      archiveAfterHours: validHours ? Number($('archive-hours').value) : savedArchiveHours,
+    });
     await refresh();
   } catch (e) {
     error(e);
+  } finally {
+    savingCleanup = false;
   }
-};
+}
+$('auto-archive').onchange = saveCleanup;
+$('archive-hours').onchange = saveCleanup;
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   $('error').hidden = true;

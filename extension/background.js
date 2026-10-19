@@ -1,5 +1,6 @@
 import { SessionBrowser } from './session-browser.js';
 import { TabLifecycle } from './lifecycle.js';
+import { migrateCleanupSettings, validateArchiveHours } from './cleanup-settings.js';
 
 let socket,
   ready = false,
@@ -10,6 +11,7 @@ let suspended = Promise.resolve();
 let authorized = false;
 let connectionError = '';
 let cleanupError = '';
+let settingsQueue = Promise.resolve();
 const queues = new Map();
 const commands = new Map();
 const browser = new SessionBrowser(chrome, (message) => {
@@ -28,6 +30,11 @@ const initialized = Promise.all([
   )
   .then(async ([local, session]) => {
     settings = local.settings || {};
+    const migrated = migrateCleanupSettings(settings);
+    if (migrated !== settings) {
+      await chrome.storage.local.set({ settings: migrated });
+      settings = migrated;
+    }
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         settings.profileID || '',
@@ -56,6 +63,7 @@ chrome.alarms.onAlarm.addListener(() => {
       lifecycle.sweep({
         connected: () => ready && settings.enabled === true,
         autoArchive: () => settings.autoArchive === true,
+        archiveAfterHours: () => settings.archiveAfterHours,
       }),
     )
     .then(() => {
@@ -229,8 +237,10 @@ async function handle(message) {
     return { ok: true };
   }
   if (message.type === 'cleanup-settings') {
-    settings.autoArchive = message.autoArchive === true;
-    await chrome.storage.local.set({ settings });
+    const archiveAfterHours = validateArchiveHours(message.archiveAfterHours);
+    const next = { ...settings, autoArchive: message.autoArchive === true, archiveAfterHours };
+    await chrome.storage.local.set({ settings: next });
+    settings = next;
     return { ok: true };
   }
   if (message.type === 'keep-tab') return lifecycle.keep(message.tabID, message.keep);
@@ -253,6 +263,14 @@ async function handle(message) {
   throw new Error('Unknown extension request');
 }
 
+function dispatch(message) {
+  if (!['settings', 'cleanup-settings', 'disable'].includes(message.type)) return handle(message);
+  // A cleanup preference save must not race a profile disable or re-pair and restore stale settings.
+  const next = settingsQueue.catch(() => {}).then(() => handle(message));
+  settingsQueue = next;
+  return next;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return false;
   if (sender.tab) {
@@ -266,7 +284,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       );
     return true;
   }
-  handle(message).then(
+  dispatch(message).then(
     (result) => respond({ result }),
     (error) => respond({ error: error.message }),
   );

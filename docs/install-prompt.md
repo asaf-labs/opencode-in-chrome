@@ -20,7 +20,7 @@ This is one guided setup conversation, not a promise of completely unattended br
 
 ### Cleanup defaults after installation
 
-The extension [collapses inactive groups after 15 minutes](../README.md#automatic-tab-cleanup). Automatic closing/archiving after 24 hours is **off by default**; installing agents must not enable it without the user's request. The popup offers Keep, Restore, and Delete saved URL controls. Explain that archives save profile-local URLs, not unsaved forms or page state, and that browser inactivity is not OpenCode conversation archival. After updating extension code, reload it in each participating Chrome profile; this cleanup feature does not require new permissions or token rotation.
+The extension [collapses inactive groups after 15 minutes](../README.md#automatic-tab-cleanup). Automatic closing/archiving is **off by default**; installing agents must not enable it without the user's request. The popup's **Archive after (hours)** setting accepts 1–168 whole hours, defaulting to 3; already-enabled legacy profiles retain 24 hours until changed. The popup also offers Keep, Restore, and Delete saved URL controls. Explain that shortening the delay can close already-idle eligible tabs on the next check, archives save profile-local URLs rather than unsaved forms/page state, and browser inactivity is not OpenCode conversation archival. After updating extension code, reload it in each participating Chrome profile; this cleanup feature does not require new permissions or token rotation.
 
 ## Credential handling
 
