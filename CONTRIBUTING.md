@@ -44,6 +44,8 @@ External contributors can fork this public MIT-licensed repo, create a branch, r
 
 For a manual smoke test, use the public sandbox at `https://www.scrapethissite.com/`. Verify automatic tab creation, reading, form interaction, the orange agent cursor, disable/re-enable, and reconnect. Use a dedicated browser profile for testing changes.
 
+For the activity UI, verify there is no idle banner or page border; actions show a small dot and cursor, which fade when idle. Expand the dot, choose Hide for this tab, and confirm actions/cursor still work while the Chrome group/badge remain. Navigate/restart the worker and confirm hiding persists. Restore the dot from that tab's popup control. Confirm iframe snapshots do not produce duplicate dots and shadow UI never becomes an agent element ref.
+
 ### Tab cleanup smoke test
 
 - Reload the updated extension in a disposable profile. Verify automatic archiving starts **off**, and indicator refresh/reconnection preserves a manually collapsed group.

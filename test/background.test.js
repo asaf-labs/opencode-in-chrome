@@ -62,6 +62,22 @@ test('pairing stays suspended until authenticated readiness and disable survives
     new Promise((resolve) => listeners.message(message, { id: chrome.runtime.id }, resolve));
   let state = (await request({ type: 'state' })).result;
   assert.equal(state.enabled, false);
+  assert.equal(
+    listeners.message(
+      { type: 'settings', ...settings },
+      { id: chrome.runtime.id, tab: { id: 1 } },
+      () => {},
+    ),
+    false,
+  );
+  const refusedHide = await new Promise((resolve) =>
+    listeners.message(
+      { type: 'hide-activity-indicator' },
+      { id: chrome.runtime.id, tab: { id: 1 } },
+      resolve,
+    ),
+  );
+  assert.ok(refusedHide.error);
   const first = sockets[0];
   await first.open();
   state = (await request({ type: 'state' })).result;

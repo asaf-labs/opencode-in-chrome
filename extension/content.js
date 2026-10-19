@@ -1,5 +1,5 @@
 (() => {
-  if (globalThis.__opencodeChrome?.version === 7) return;
+  if (globalThis.__opencodeChrome?.version === 8) return;
   globalThis.__opencodeChrome?.dispose?.();
   globalThis.__opencodeChrome?.setEnabled?.(false);
   let refs = new Map(),
@@ -7,7 +7,12 @@
     snapshotURL;
   let snapshotRevision = 0;
   const documentID = crypto.randomUUID();
-  let controlHost, controlShadow, cursor, target, status, idleTimer;
+  let controlHost, controlShadow, cursor, target, status, indicator, toggle, panel, idleTimer;
+  let indicatorHidden = false;
+  function setIndicatorHidden(value) {
+    indicatorHidden = !!value;
+    if (indicatorHidden && indicator) indicator.hidden = true;
+  }
   let enabled = true,
     cursorShown = false,
     controlRevision = 0;
@@ -23,7 +28,6 @@
     if (controlHost?.isConnected) return;
     controlHost = document.createElement('div');
     controlHost.id = 'opencode-agent-overlay';
-    controlHost.setAttribute('aria-hidden', 'true');
     controlHost.style.cssText =
       'all:initial!important;position:fixed!important;inset:0!important;z-index:2147483647!important;pointer-events:none!important;';
     controlShadow = controlHost.attachShadow({ mode: 'open' });
@@ -32,9 +36,14 @@
       <style>
         :host { pointer-events:none; }
         * { box-sizing:border-box; pointer-events:none!important; }
-        .indicator { position:fixed; top:14px; right:14px; display:flex; gap:9px; align-items:center;
-          padding:9px 13px; border:1px solid #fb923c; border-radius:24px; background:#24170ff2;
-          color:#ffedd5; box-shadow:0 2px 16px #0004; font:600 12px/1.3 system-ui,sans-serif; }
+        [hidden] { display:none!important; }
+        .indicator { position:fixed; top:10px; right:10px; color:#ffedd5; font:600 12px/1.4 system-ui,sans-serif; }
+        .indicator button { pointer-events:auto!important; cursor:pointer; color:inherit; font:inherit;
+          border:1px solid #fb923c; background:#24170ff2; }
+        .toggle { width:24px; height:24px; border-radius:50%; display:grid; place-items:center; padding:0; margin-left:auto; }
+        .panel { margin-top:6px; padding:10px; max-width:240px; border:1px solid #fb923c;
+          border-radius:8px; background:#24170ff2; box-shadow:0 2px 12px #0004; }
+        .panel button { display:block; margin-top:8px; padding:4px 8px; border-radius:5px; }
         .dot { width:8px; height:8px; border-radius:50%; background:#fb923c; box-shadow:0 0 0 4px #fb923c25; }
         .cursor { position:fixed; top:0; left:0; opacity:0; transform:translate3d(50vw,50vh,0);
           transition:transform 240ms cubic-bezier(.2,.75,.25,1),opacity 150ms; filter:drop-shadow(0 2px 3px #0005); }
@@ -48,27 +57,52 @@
         .pulse { animation:pulse 600ms ease-out; }
         @keyframes pulse { 0% { opacity:1; transform:scale(.6); } 100% { opacity:0; transform:scale(2); } }
       </style>
-      <div class="indicator"><span class="dot"></span><span class="status">OpenCode · Tab under agent control</span></div>
-      <div class="target"></div>
-      <div class="cursor"><span class="ring"></span>
+      <div class="indicator" hidden>
+        <button class="toggle" type="button" aria-label="OpenCode activity" aria-expanded="false" aria-controls="opencode-status"><span class="dot"></span></button>
+        <div class="panel" id="opencode-status" hidden><span class="status" role="status"></span><button class="hide" type="button">Hide for this tab</button></div>
+      </div>
+      <div class="target" aria-hidden="true"></div>
+      <div class="cursor" aria-hidden="true"><span class="ring"></span>
         <svg viewBox="0 0 28 34"><path d="M2 2 L2 26 L8.5 20 L14 31 L19 28.5 L13.5 18 L23 18 Z" fill="#f97316" stroke="#fff7ed" stroke-width="2" stroke-linejoin="round"/></svg>
         <span class="cursor-label">OpenCode</span>
       </div>`;
     cursor = controlShadow.querySelector('.cursor');
     target = controlShadow.querySelector('.target');
     status = controlShadow.querySelector('.status');
+    indicator = controlShadow.querySelector('.indicator');
+    toggle = controlShadow.querySelector('.toggle');
+    panel = controlShadow.querySelector('.panel');
+    toggle.onclick = () => {
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      scheduleIdle(panel.hidden ? 1800 : 8000);
+    };
+    controlShadow.querySelector('.hide').onclick = () => {
+      setIndicatorHidden(true);
+      void globalThis.chrome?.runtime
+        ?.sendMessage?.({ type: 'hide-activity-indicator' })
+        ?.catch(() => {});
+    };
     document.documentElement.append(controlHost);
     cursorShown = false;
   }
   function activity(label) {
     if (!enabled) return;
     setEnabled(true);
-    clearTimeout(idleTimer);
     status.textContent = `OpenCode · ${label}`;
+    indicator.hidden = indicatorHidden || globalThis.top !== globalThis.self;
+    scheduleIdle();
+  }
+  function scheduleIdle(delay = 1800) {
+    clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      status.textContent = 'OpenCode · Tab under agent control';
+      indicator.hidden = true;
+      panel.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
       target.style.opacity = '0';
-    }, 1800);
+      cursor.style.opacity = '0';
+      cursorShown = false;
+    }, delay);
   }
   async function pointAt(element, label, commandID) {
     if (!enabled) throw new Error('Browser access is disabled.');
@@ -279,6 +313,7 @@
     return { valid: true };
   }
   function run(tool, args = {}) {
+    if (typeof args.indicatorHidden === 'boolean') setIndicatorHidden(args.indicatorHidden);
     if (args.commandID && cancelledActions.has(args.commandID))
       throw new Error('Browser action cancelled before execution.');
     if (!enabled) throw new Error('Browser access is disabled.');
@@ -429,12 +464,13 @@
   };
   globalThis.chrome?.runtime?.onMessage?.addListener(onMessage);
   globalThis.__opencodeChrome = {
-    version: 7,
+    version: 8,
     run,
     validateClick,
     frameContext,
     projectFramePoint,
     setEnabled,
+    setIndicatorHidden,
     dispose: () => {
       setEnabled(false);
       globalThis.chrome?.runtime?.onMessage?.removeListener(onMessage);

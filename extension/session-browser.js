@@ -74,8 +74,14 @@ export class SessionBrowser {
         });
       await this.chrome.scripting.executeScript({
         target: { tabId: tabID, allFrames: true },
-        func: (enabled) => globalThis.__opencodeChrome?.setEnabled(enabled),
-        args: [this.enabled],
+        func: (enabled, hidden) => {
+          globalThis.__opencodeChrome?.setEnabled(enabled);
+          globalThis.__opencodeChrome?.setIndicatorHidden(hidden);
+        },
+        args: [
+          this.enabled,
+          !!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)?.indicatorHidden,
+        ],
       });
     } catch {
       /* A navigating or protected page can’t display an overlay yet. */
@@ -131,6 +137,14 @@ export class SessionBrowser {
         } catch {}
       }
     }
+  }
+
+  async setIndicatorHidden(tabID, hidden) {
+    const entry = this.owner(tabID);
+    if (!entry) throw new Error('Tab is not agent-owned.');
+    entry[1].tabs.find((tab) => tab.id === tabID).indicatorHidden = !!hidden;
+    await this.save(entry[0]);
+    await this.overlay(tabID);
   }
 
   async updated(tabID, changeInfo, tab) {
@@ -372,13 +386,14 @@ export class SessionBrowser {
     if (command.tool === 'read_page') {
       const results = await this.chrome.scripting.executeScript({
         target,
-        func: () => {
+        func: (indicatorHidden) => {
           try {
-            return globalThis.__opencodeChrome.run('read_page');
+            return globalThis.__opencodeChrome.run('read_page', { indicatorHidden });
           } catch (error) {
             return { error: error.message };
           }
         },
+        args: [!!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)?.indicatorHidden],
       });
       this.assert(command);
       const frames =
@@ -406,6 +421,8 @@ export class SessionBrowser {
         command.tool,
         {
           ...args,
+          indicatorHidden: !!this.owner(tabID)?.[1].tabs.find((tab) => tab.id === tabID)
+            ?.indicatorHidden,
           ...(scoped.ref ? { ref: scoped.ref } : {}),
           documentID:
             frameID === 0

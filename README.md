@@ -237,9 +237,9 @@ For installation, agents should use `install:opencode`, `pair`, and `doctor` as 
 
 ## Visible agent control
 
-Session-owned tabs are marked with an **orange OpenCode tab group**, with a short session identifier. The page shows **OpenCode · Tab under agent control** in the upper-right corner.
+Session-owned tabs are marked with an **orange OpenCode tab group**, with a short session identifier, and an **AI extension badge**. There is no permanent page banner or page border. A small orange activity dot appears in the main page's upper-right corner during browser actions and fades after inactivity. Click it to expand the current status, then choose **Hide for this tab** to dismiss it without stopping automation. The preference survives navigation and extension-worker restarts for that owned tab, but not a full Chrome restart. To bring the dot back, open the extension popup and choose **Show page activity dot** under that tab. Frames do not display duplicate dots.
 
-During clicks, typing, dropdown changes, and checkbox actions, a separate **orange agent cursor** moves to the target, highlights the element, and pulses as the action is performed. Scrolling also displays the agent cursor. This is a page overlay; it does not move or follow your actual mouse pointer and does not intercept your clicks.
+During clicks, typing, dropdown changes, and checkbox actions, a separate **orange agent cursor** moves to the target, highlights the element, and pulses as the action is performed. Scrolling also displays the agent cursor. The cursor and highlight fade after inactivity, remain independent of the dot's visibility, and never move or follow your actual mouse pointer. Cursor/highlight layers do not intercept your clicks; only the dot and its expanded panel's buttons accept pointer input.
 
 Disabling browser access removes the page overlay and changes its tab group to grey. After upgrading, reload the extension in `chrome://extensions` and accept updated permissions if Chrome prompts. Browser-level clicks require the `debugger` permission and may show a brief Chrome debugging banner. Existing owned tabs regain their indicators automatically. Close DevTools on the target tab if debugger attachment fails; there is no synthetic-click fallback.
 

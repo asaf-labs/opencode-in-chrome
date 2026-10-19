@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replace the permanent page banner with an activity-only orange dot, expandable status, and per-owned-tab hide/show controls. Keep Chrome-native ownership markers; fade cursor/highlight when idle and avoid duplicate dots in frames.
 - Serialize session group creation, consolidate owned tabs, and preserve manual group collapse.
 - Collapse inactive groups after 15 minutes; add opt-in 24-hour URL archiving, Keep controls, local restore/delete, and guards for active/pinned/audible/loading tabs, busy sessions, disconnected profiles, and storage failure.
 - Add one-time Chrome-profile opt-in, persistent profile names/IDs, simultaneous authenticated connections, and `list_profiles`/`select_profile` tools.
