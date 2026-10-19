@@ -47,6 +47,7 @@ export class DebuggerSessions {
           entry.attached = !entry.detached;
         });
     }
+    this.cancelIdleDetach(entry);
     const lease = { entry };
     entry.leases.add(lease);
     try {
@@ -61,14 +62,45 @@ export class DebuggerSessions {
     }
   }
 
-  async release(lease) {
+  cancelIdleDetach(entry) {
+    clearTimeout(entry.idleTimer);
+    entry.idleTimer = undefined;
+    entry.idleToken = undefined;
+  }
+
+  async release(lease, { debounce = false } = {}) {
     if (!lease || lease.released) return;
     lease.released = true;
     lease.entry.leases.delete(lease);
-    if (!lease.entry.leases.size) await this.close(lease.entry);
+    const entry = lease.entry;
+    if (entry.leases.size) return;
+    const binding = this.browser.bindings[entry.sessionID];
+    if (
+      debounce &&
+      entry.attached &&
+      !entry.closed &&
+      this.browser.enabled &&
+      !binding?.paused &&
+      binding?.generation === entry.generation &&
+      this.browser.owner(entry.tabID)?.[0] === entry.sessionID
+    ) {
+      this.cancelIdleDetach(entry);
+      const token = Symbol();
+      entry.idleToken = token;
+      entry.idleTimer = setTimeout(() => {
+        if (
+          entry.idleToken === token &&
+          !entry.leases.size &&
+          this.entries.get(entry.tabID) === entry
+        )
+          void this.close(entry).catch(() => {});
+      }, 30_000);
+      entry.idleTimer.unref?.();
+    } else await this.close(entry);
   }
 
   async close(entry) {
+    this.cancelIdleDetach(entry);
     if (entry.closing) return entry.closing;
     entry.closed = true;
     entry.closing = this.detach(entry);

@@ -67,6 +67,7 @@ test(
     const contextID = await cdp.navigate(url);
     const chrome = fakeChrome();
     const browser = new SessionBrowser(chrome);
+    t.after(() => browser.suspend());
     browser.enabled = true;
     chrome.scripting.executeScript = async (request) => {
       if (request.files) {
@@ -119,6 +120,8 @@ test(
     );
     const selected = await browser.run(command('click', { ref: coupa.ref }));
     assert.equal(selected.dispatched, true);
+    assert.equal(chrome.debuggerCalls.filter((call) => call.action === 'attach').length, 1);
+    assert.equal(chrome.debuggerCalls.filter((call) => call.action === 'detach').length, 0);
     assert.equal(
       await cdp.evaluate("document.getElementById('portal-filter').textContent"),
       'Portals: Coupa',
@@ -138,5 +141,7 @@ test(
     );
     assert.equal(chrome.debuggerCalls.length, before);
     assert.deepEqual(await cdp.evaluate('events'), []);
+    await browser.suspend();
+    assert.equal(chrome.debuggerTabs.size, 0);
   },
 );

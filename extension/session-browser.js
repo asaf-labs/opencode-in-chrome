@@ -166,7 +166,11 @@ export class SessionBrowser {
       this.documents.delete(tabID);
       this.frameDocuments.delete(tabID);
       if (!/^https?:\/\//.test(changeInfo.url))
-        await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
+        await Promise.all([
+          this.recordings.removed(tabID),
+          this.inspections.remove(tabID),
+          this.debuggers.clear(tabID),
+        ]);
     }
     if (changeInfo.status === 'complete') await this.overlay(tabID);
     await this.save(sessionID);
@@ -217,6 +221,7 @@ export class SessionBrowser {
       binding.tabs.flatMap((tab) => [
         this.inspections.remove(tab.id),
         this.recordings.removed(tab.id),
+        this.debuggers.clear(tab.id),
       ]),
     );
     await this.save(sessionID);
@@ -259,6 +264,7 @@ export class SessionBrowser {
 
   async suspend() {
     this.enabled = false;
+    const clearingDebuggers = this.debuggers.clear();
     const invalidated = this.invalidate();
     // Notify in-flight content scripts immediately, ahead of slower UI/storage work.
     const notifications = Object.values(this.bindings).flatMap((binding) =>
@@ -271,8 +277,8 @@ export class SessionBrowser {
       ...notifications,
       this.recordings.suspend(),
       this.inspections.suspend(),
+      clearingDebuggers,
     ]);
-    await this.debuggers.clear();
     await this.refreshIndicators();
   }
 
@@ -580,6 +586,7 @@ export class SessionBrowser {
     const debuggee = { tabId: tabID };
     let lease;
     let pressAttempted = false;
+    let completed = false;
     try {
       await this.#validateClick(command, tabID, target);
       const point = await this.#inputPoint(command, tabID, target);
@@ -618,6 +625,7 @@ export class SessionBrowser {
         clickCount: 1,
       });
       this.assert(command);
+      completed = true;
       return {
         tabID,
         ...(target.frameID ? { frameID: target.frameID } : {}),
@@ -632,7 +640,7 @@ export class SessionBrowser {
         );
       throw error;
     } finally {
-      await this.debuggers.release(lease);
+      await this.debuggers.release(lease, { debounce: completed });
       this.clickingTabs.delete(tabID);
     }
   }

@@ -197,7 +197,7 @@ test('click dispatch uses the owned tab and complete browser mouse input with ex
   assert.deepEqual(result, { tabID: tab.tabID, dispatched: true, applicationAccepted: null });
   assert.deepEqual(
     chrome.debuggerCalls.map((call) => call.action),
-    ['attach', 'send', 'send', 'send', 'detach'],
+    ['attach', 'send', 'send', 'send'],
   );
   assert.equal(chrome.debuggerCalls[0].version, '1.3');
   assert.ok(chrome.debuggerCalls.every((call) => call.target.tabId === tab.tabID));
@@ -231,6 +231,8 @@ test('click dispatch uses the owned tab and complete browser mouse input with ex
     chrome.scriptCalls.filter((call) => call.args?.[0]?.snapshotRevision !== undefined).length,
     2,
   );
+  assert.equal(chrome.debuggerTabs.size, 1);
+  await browser.debuggers.clear();
   assert.equal(chrome.debuggerTabs.size, 0);
 });
 

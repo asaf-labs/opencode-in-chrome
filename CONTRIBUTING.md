@@ -52,6 +52,8 @@ For a manual smoke test, use the public sandbox at `https://www.scrapethissite.c
 
 For the activity UI, verify there is no idle banner or page border; actions show a small dot and cursor, which fade when idle. Expand the dot, choose Hide for this tab, and confirm actions/cursor still work while the Chrome group/badge remain. Navigate/restart the worker and confirm hiding persists. Restore the dot from that tab's popup control. Confirm iframe snapshots do not produce duplicate dots and shadow UI never becomes an agent element ref.
 
+For Chrome's native debugging banner, run several successful clicks less than 30 seconds apart and verify the debugger is reused instead of detached after each click. With no inspection/recording lease, verify detach after 30 idle seconds; disable/disconnect, pause, tab closure, protected navigation, and Chrome's Cancel must clear it without waiting. The native banner cannot be hidden while attached, and its initial/final layout changes are still possible. Use `node --test test/debugger-sessions.test.js` for deterministic timer cases.
+
 ### Tab cleanup smoke test
 
 - Reload the updated extension in a disposable profile. Verify automatic archiving starts **off**, and indicator refresh/reconnection preserves a manually collapsed group.
