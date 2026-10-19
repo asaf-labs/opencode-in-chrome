@@ -19,6 +19,8 @@ export function fakeChrome() {
   const groupState = new Map();
   const debuggerCalls = [];
   const debuggerTabs = new Set();
+  const debuggerEvents = new Set(),
+    debuggerDetach = new Set();
   let nextGroupID = 10;
   const get = async (id) => {
     if (!tabState.has(id)) throw new Error('No tab');
@@ -32,7 +34,22 @@ export function fakeChrome() {
     saved,
     debuggerCalls,
     debuggerTabs,
+    emitDebugger: (tabID, method, params, sessionId) => {
+      for (const listener of debuggerEvents) listener({ tabId: tabID, sessionId }, method, params);
+    },
+    detachDebugger: (tabID) => {
+      debuggerTabs.delete(tabID);
+      for (const listener of debuggerDetach) listener({ tabId: tabID }, 'target_closed');
+    },
     debugger: {
+      onEvent: {
+        addListener: (listener) => debuggerEvents.add(listener),
+        removeListener: (listener) => debuggerEvents.delete(listener),
+      },
+      onDetach: {
+        addListener: (listener) => debuggerDetach.add(listener),
+        removeListener: (listener) => debuggerDetach.delete(listener),
+      },
       attach: async (target, version) => {
         debuggerCalls.push({ action: 'attach', target, version });
         if (debuggerTabs.has(target.tabId)) throw new Error('Already attached');
@@ -41,6 +58,30 @@ export function fakeChrome() {
       sendCommand: async (target, method, params) => {
         if (!debuggerTabs.has(target.tabId)) throw new Error('Not attached');
         debuggerCalls.push({ action: 'send', target, method, params });
+        if (method === 'Page.captureScreenshot') return { data: 'aW1hZ2U=' };
+        if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+        if (method === 'Profiler.stop')
+          return {
+            profile: {
+              nodes: [
+                {
+                  id: 1,
+                  callFrame: {
+                    functionName: 'work',
+                    scriptId: '1',
+                    url: 'https://example.com/?token=private',
+                    lineNumber: 1,
+                    columnNumber: 0,
+                  },
+                  children: [],
+                },
+              ],
+              startTime: 0,
+              endTime: 1000000,
+              samples: [1],
+              timeDeltas: [1000],
+            },
+          };
       },
       detach: async (target) => {
         debuggerCalls.push({ action: 'detach', target });
@@ -110,11 +151,40 @@ export function fakeChrome() {
         },
       },
     },
+    offscreen: { createDocument: async () => {} },
+    runtime: {
+      getURL: (file) => `chrome-extension://test/${file}`,
+      getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT' }],
+      sendMessage: async ({ segments = [] }) => ({
+        video: 'GkXfow==',
+        timeline: segments.map((_segment, index) => ({
+          startMs: index * 1000,
+          endMs: (index + 1) * 1000,
+        })),
+      }),
+    },
     scripting: {
       executeScript: async (request) => {
         scriptCalls.push(request);
         if (request.files) return [];
         const tab = await get(request.target.tabId);
+        if (request.args?.[0] === 'resolve_target')
+          return [{ result: { ref: 'e1', documentID: `doc-${tab.id}` } }];
+        if (request.args?.[0] === 'start') return [{ result: { supported: ['mark', 'measure'] } }];
+        if (request.args?.[0] === 'stop')
+          return [
+            {
+              result: {
+                events: [{ type: 'mark', name: 'ready', startTime: 10, duration: 0 }],
+                dropped: 0,
+                timeOrigin: 100000,
+                supported: ['mark'],
+              },
+            },
+          ];
+        if (request.args?.[0]?.checks) return [{ result: { passed: true } }];
+        if (request.args?.[0]?.selector)
+          return [{ result: { ref: 'e1', documentID: `doc-${tab.id}` } }];
         if (request.args?.[0] === 'click')
           return [
             {

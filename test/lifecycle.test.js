@@ -144,6 +144,18 @@ test('archive storage failure leaves live tabs untouched', async () => {
   assert.equal(lifecycle.archives.length, 0);
 });
 
+test('retained recording plans and inspections prevent idle cleanup between tool calls', async () => {
+  for (const kind of ['recording', 'inspection']) {
+    const { chrome, browser, lifecycle, tabID } = await fixture();
+    chrome.tabState.get(tabID).active = false;
+    if (kind === 'recording') browser.recordings.sessions.set('ses_cleanup', { plan: { tabID } });
+    else browser.inspections.states.set(tabID, { sessionID: 'ses_cleanup' });
+    await lifecycle.sweep({ connected: () => true, autoArchive: true });
+    assert.equal(chrome.tabState.has(tabID), true);
+    assert.equal(lifecycle.archives.length, 0);
+  }
+});
+
 test('groups containing personal or active tabs are not collapsed', async () => {
   const { chrome, browser, lifecycle, tabID } = await fixture();
   const groupId = browser.bindings.ses_cleanup.groups[1];

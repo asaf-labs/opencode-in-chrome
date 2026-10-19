@@ -97,7 +97,7 @@ test('independent project adapters share one browser but cannot access each othe
   const { chrome } = await browserConnection(t, f.config);
   const first = await mcpClient(t, f.config);
   const second = await mcpClient(t, f.config);
-  assert.equal((await first.listTools()).tools.length, 14);
+  assert.equal((await first.listTools()).tools.length, 27);
   const [one, two] = await Promise.all([
     call(first, 'ses_projectOne', 'open_tab', { url: 'https://example.com' }),
     call(second, 'ses_projectTwo', 'open_tab', { url: 'https://example.org' }),
@@ -247,7 +247,7 @@ test('concurrent adapters start a single persistent daemon and can restart it af
         stderr: 'pipe',
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 14);
+    assert.equal((await client.listTools()).tools.length, 27);
   }
   await clients[0].close();
   assert.equal((await sharedStatus(config)).bridgeID, statuses[0].bridgeID);

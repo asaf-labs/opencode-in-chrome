@@ -65,7 +65,10 @@ export async function startTestBrowser(t) {
       pending.delete(message.id);
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
-    } else events.emit(message.method, message);
+    } else {
+      events.emit(message.method, message);
+      events.emit('protocol', message);
+    }
   });
   socket.on('close', () => {
     for (const request of pending.values()) request.reject(new Error('Test Chrome disconnected.'));
@@ -73,6 +76,10 @@ export async function startTestBrowser(t) {
   });
   const send = (method, params = {}, sessionId) =>
     new Promise((resolve, reject) => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        reject(new Error('Test Chrome disconnected.'));
+        return;
+      }
       const id = ++nextID;
       pending.set(id, { resolve, reject });
       socket.send(JSON.stringify({ id, method, params, sessionId }));
@@ -98,6 +105,22 @@ export async function startTestBrowser(t) {
   return {
     command,
     evaluate,
+    context: async () => {
+      const { frameTree } = await command('Page.getFrameTree');
+      const { executionContextId } = await command('Page.createIsolatedWorld', {
+        frameId: frameTree.frame.id,
+        worldName: 'opencode-test',
+      });
+      return executionContextId;
+    },
+    onEvent: (method, callback) =>
+      events.on(method, (message) => {
+        if (message.sessionId === sessionId) callback(message.params);
+      }),
+    onAnyEvent: (callback) =>
+      events.on('protocol', (message) => {
+        if (message.sessionId === sessionId) callback(message.method, message.params);
+      }),
     contexts: async () => {
       const { frameTree } = await command('Page.getFrameTree');
       const frames = [];

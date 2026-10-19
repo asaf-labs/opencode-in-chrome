@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Integrate inspection/recordings with profile-aware routing, iframe actions, quiet activity indicators, and configurable cleanup; export profile-tagged artifact summaries without raw payloads and exclude retained captures from idle cleanup.
+- Add session-owned network inspection, redacted headers and opt-in bodies, console/error logs, bounded CPU profiles, and main-frame performance timeline trace exports.
+- Coordinate debugger leases across inspection, clicks and recordings, with bounded buffers, automatic expiry, navigation invalidation and cleanup on disable/disconnect.
+- Add real-Chrome diagnostics regression and fix the shared request schema for the Zod 4 dependency now on main.
+- Add self-declared, immutable task plans with verified step capture and local WebM/action-manifest export; exclude failed attempts while transparently labelling edited walkthroughs.
+- Add deterministic selector-based actions, observable pre/postconditions and goal checks, recording cancellation, bounded capture, and private artifacts without FFmpeg or automatic replay.
+- Add the offscreen permission for built-in WebCodecs encoding and a real Chrome recording regression with a failed attempt excluded.
 - Make the per-profile archive delay configurable in the popup (1–168 whole hours, default 3). Keep archiving opt-in and preserve 24 hours for previously enabled profiles until changed; validate saved delays and recheck them before closing.
 - Replace the permanent page banner with an activity-only orange dot, expandable status, and per-owned-tab hide/show controls. Keep Chrome-native ownership markers; fade cursor/highlight when idle and avoid duplicate dots in frames.
 - Serialize session group creation, consolidate owned tabs, and preserve manual group collapse.

@@ -16,6 +16,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { registerBrowserTools } from '../bridge/tools.js';
+import { saveInspectionArtifact } from '../bridge/inspection-artifacts.js';
+import { saveRecordingArtifacts } from '../bridge/recording-artifacts.js';
 
 const work = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Work' };
 const personal = { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Personal' };
@@ -244,7 +246,7 @@ test('profile selection and scoped refs also traverse the authenticated shared H
   await server.connect(serverTransport);
   await sdk.connect(clientTransport);
   t.after(() => sdk.close());
-  assert.equal((await sdk.listTools()).tools.length, 14);
+  assert.equal((await sdk.listTools()).tools.length, 27);
   const call = async (name, args) => {
     const result = await sdk.callTool({
       name,
@@ -284,6 +286,73 @@ test('profile routing persistence errors fail closed before any browser command'
       .profileID,
     work.id,
   );
+});
+
+test('profile-routed inspection and recording exports persist through MCP and shared HTTP without raw payloads', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'profile-capture-export-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const f = await fixture(t, { shared: true });
+  const a = await f.connect(work);
+  const b = await f.connect(personal);
+  t.after(() => Promise.all([a.browser.suspend(), b.browser.suspend()]));
+  const server = new McpServer({ name: 'profile-captures', version: 'test' });
+  registerBrowserTools(server, new SharedBrowserHub(f.config), {
+    saveInspection: (output) =>
+      saveInspectionArtifact(output, { root: path.join(root, 'inspections') }),
+    saveRecording: (output) =>
+      saveRecordingArtifacts(output, { root: path.join(root, 'recordings') }),
+  });
+  const sdk = new Client({ name: 'profile-captures', version: 'test' });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await sdk.connect(clientTransport);
+  t.after(() => sdk.close());
+  const call = async (name, args) => {
+    const output = await sdk.callTool({
+      name,
+      arguments: { ...args, profileID: work.id },
+      _meta: { 'ai.opencode/sessionID': 'ses_captures' },
+    });
+    assert.notEqual(output.isError, true, output.content[0]?.text);
+    return JSON.parse(output.content[0].text);
+  };
+  await call('select_profile', {});
+  const tab = await call('open_tab', { url: 'https://example.com' });
+  await call('start_inspection', { tabID: tab.tabID });
+  assert.equal(b.chrome.debuggerTabs.size, 0);
+  await call('start_cpu_profile', { tabID: tab.tabID, durationMs: 1000 });
+  const cpu = await call('stop_cpu_profile', { tabID: tab.tabID });
+  assert.equal(cpu.profileID, work.id);
+  assert.equal(cpu.data, undefined);
+  assert.ok(JSON.parse(await readFile(cpu.artifactPath, 'utf8')).samples.length);
+  await call('start_performance_trace', { tabID: tab.tabID, durationMs: 1000 });
+  const timeline = await call('stop_performance_trace', { tabID: tab.tabID });
+  assert.equal(timeline.profileID, work.id);
+  assert.equal(timeline.data, undefined);
+  assert.ok(JSON.parse(await readFile(timeline.artifactPath, 'utf8')).traceEvents.length);
+  const { recordingID } = await call('start_recording', {
+    tabID: tab.tabID,
+    task: 'Scroll',
+    goal: 'Scrolled',
+    steps: [
+      {
+        id: 'scroll',
+        description: 'Scroll',
+        before: [{ url: 'https://example.com/' }],
+        actions: [{ tool: 'scroll', deltaY: 10 }],
+        after: [{ url: 'https://example.com/' }],
+      },
+    ],
+    goalChecks: [{ url: 'https://example.com/' }],
+  });
+  await call('run_recording_step', { recordingID, stepID: 'scroll' });
+  const recording = await call('finish_recording', { recordingID });
+  assert.equal(recording.profileID, work.id);
+  assert.equal(recording.video, undefined);
+  assert.equal((await readFile(recording.videoPath)).subarray(0, 4).toString('hex'), '1a45dfa3');
+  assert.equal(a.browser.recordings.sessions.size, 0);
+  await call('stop_inspection', { tabID: tab.tabID });
+  assert.equal(a.chrome.debuggerTabs.size, 0);
 });
 
 test('an old unnamed extension cannot replace an already connected legacy profile', async (t) => {

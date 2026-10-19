@@ -68,7 +68,7 @@ Snapshots now discover standard interactive ARIA roles, including custom multise
 
 Iframe mouse input remains a main-viewport browser action. Content scripts derive the frame's ancestry through cross-origin-safe WindowProxy identity, not page messages or DOM markers. Before pressing, the worker revalidates the target and projects its point through each containing frame, including borders and positive axis-aligned scaling. Each ancestor is hit-tested. Missing, navigated, covered, moved, or unsupported transformed frames fail closed. No new Chrome permission is required beyond existing script access and debugger input.
 
-For `click`, the content script prepares viewport CSS coordinates from a visible, unobstructed client rectangle without calling `el.click()`. The worker validates the original ref, document, snapshot/control revisions, and hit target, attaches `chrome.debugger` to the owned tab, and dispatches mouse movement. It revalidates after hover handlers before sending press/release, checks cancellation/generation/expiry between operations, and detaches in cleanup. Attachment failures never fall back to DOM clicks. The result is `{ tabID, dispatched: true, applicationAccepted: null }`, not an application-state assertion. Once a press is attempted, errors warn that the page may already have changed; no retry is automatic. DOM validation and browser input remain separate operations, so page changes can still race dispatch.
+For `click`, the content script prepares viewport CSS coordinates from a visible, unobstructed client rectangle without calling `el.click()`. The worker validates the original ref, document, snapshot/control revisions, and hit target, acquires a debugger lease on the owned tab, and dispatches mouse movement. It revalidates after hover handlers before sending press/release, checks cancellation/generation/expiry between operations, and releases the lease in cleanup. The last lease detaches; authorized inspection/recording can retain the attachment between clicks. Attachment failures never fall back to DOM clicks. The result is `{ tabID, dispatched: true, applicationAccepted: null }`, not an application-state assertion. Once a press is attempted, errors warn that the page may already have changed; no retry is automatic. DOM validation and browser input remain separate operations, so page changes can still race dispatch.
 
 MCP cancellation and timeouts send `cancel` to the worker. Queued work is marked cancelled; executing page interactions receive an extension message. Disable and disconnect notify all owned tabs. These are best-effort stops, not rollback: an already-issued Chrome call or network request may complete.
 
@@ -77,6 +77,8 @@ MCP cancellation and timeouts send `cancel` to the worker. Queued work is marked
 ### Idle tab maintenance
 
 The worker's 30-second reconnect alarm also schedules `TabLifecycle.sweep`. Maintenance runs only while the profile is connected/enabled, skips busy or paused sessions, and serializes with browser commands per session. Browser commands, owned-tab activation/navigation, and inherited tabs update the session's activity timestamp. Missing timestamps get a fresh grace period on worker restoration; inactivity is not proof that OpenCode has finished a conversation. There is no OpenCode session-status polling or conversation-archive event integration.
+
+Retained recording plans and active inspection sessions also prevent idle cleanup between tool calls. Nested recorded actions use the parent step's session lock rather than recursively acquiring it. Explicit recording cancellation and inspection stop bypass the command queue/lock so they can interrupt pending attachment or capture.
 
 After 15 minutes, inactive groups can collapse unless they contain active or non-owned tabs. Group marking is serialized per session and consolidates only verified owned tabs within each window; indicator updates never force groups open. With explicit popup opt-in, eligible tabs can be archived after the profile's configured `archiveAfterHours` delay (1–168 whole hours). The new default is 3; migration preserves 24 hours for profiles that had already opted into the old fixed rule. Settings mutations are serialized, validated, and persisted before the live cleanup preference changes. The sweep reads the current delay again before closing, so increasing it during archive persistence can prevent a close; invalid delays fail closed. Active, pinned, audible, loading, and Keep tabs are excluded. URL/title/session metadata is saved before removal, eligibility and ownership are checked again, and persistence failure prevents closing. These checks and Chrome removal are not atomic; unsaved page state cannot be detected reliably or restored.
 
@@ -92,6 +94,20 @@ Archives remain in the same Chrome profile. Restore creates an owned tab using t
 - Bridge memory: pending requests, routing bindings, and the last 100 activity summaries.
 
 Session ownership is a tab-targeting boundary, not account isolation. Session IDs are trusted MCP routing metadata, not credentials. Page content is untrusted data. See [SECURITY.md](../SECURITY.md) for the complete threat model.
+
+## Tab inspection
+
+`bridge/inspection-tools.js` defines opt-in inspection and bounded network/console/profile tools. `extension/inspections.js` scopes event buffers to session/tab/generation, sanitizes captured metadata and invalidates IDs on navigation. `inspection-profiles.js` uses fixed CPU profiler commands and a bundled isolated-world PerformanceObserver helper, not global Chromium tracing. `inspection-privacy.js` bounds and redacts output.
+
+`debugger-sessions.js` coordinates reference-counted attachments across clicks, recording and inspection, including pending-attach cancellation and detach invalidation. `bridge/inspection-artifacts.js` persists sanitized profiles/timelines at generated private local paths and returns only paths/summaries. See [inspection contract](inspection.md).
+
+The common tool layer adds profile routing to all 27 tools. Profile metadata is separated from strict artifact payload validation, then included in path/summary responses; recording cleanup after persistence carries its original profile ID. Captures never migrate when a conversation selects another Chrome profile. Stop/cancel before switching, or select the original profile explicitly to access retained data. Existing iframe action routing, pointer validation, per-tab activity-dot preferences, and configurable tab cleanup remain independent of capture.
+
+## Verified recordings
+
+`bridge/recording-tools.js` declares strict schemas for an immutable task plan and start/run/finish/cancel tools. `extension/recordings.js` scopes plans to a session-owned tab, checks ordered preconditions/postconditions, and accepts only verified segments. `recording-capture.js` temporarily attaches the debugger, captures bounded JPEG screencast frames, and shares its attachment with the existing guarded click path. Nested actions inherit parent cancellation and must stay in that same tab.
+
+`recording-offscreen.js` receives authenticated extension-only encoding messages. `video-encoder.js` samples accepted segments onto a captioned canvas, encodes VP8 through WebCodecs, and `webm.js` builds the container with a deterministic timeline. `bridge/recording-artifacts.js` saves video/manifest into generated private `.local/recordings/` directories before returning only paths. No capture happens outside planned steps; excluded attempts are counted, not rolled back. See [recordings](recordings.md) for the contract and limitations.
 
 ## Verification
 

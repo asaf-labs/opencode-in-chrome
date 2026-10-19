@@ -8,7 +8,7 @@ const requestSchema = z
   .object({
     sessionID: z.string().regex(/^ses[\w-]+$/),
     tool: z.string(),
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
   })
   .strict();
 

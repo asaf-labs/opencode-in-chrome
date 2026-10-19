@@ -1,3 +1,6 @@
+import { Recordings } from './recordings.js';
+import { DebuggerSessions } from './debugger-sessions.js';
+import { Inspections } from './inspections.js';
 import { parseFrameRef, scopeSnapshot, combineSnapshots } from './frame-refs.js';
 
 export class SessionBrowser {
@@ -23,6 +26,9 @@ export class SessionBrowser {
   constructor(chrome, publish = () => {}) {
     this.chrome = chrome;
     this.publish = publish;
+    this.debuggers = new DebuggerSessions(chrome, this);
+    this.inspections = new Inspections(chrome, this);
+    this.recordings = new Recordings(chrome, this);
   }
 
   async restore(saved) {
@@ -159,6 +165,8 @@ export class SessionBrowser {
       binding.lastActivity = Date.now();
       this.documents.delete(tabID);
       this.frameDocuments.delete(tabID);
+      if (!/^https?:\/\//.test(changeInfo.url))
+        await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
     }
     if (changeInfo.status === 'complete') await this.overlay(tabID);
     await this.save(sessionID);
@@ -170,7 +178,20 @@ export class SessionBrowser {
   }
 
   assert(command) {
-    if (command.cancelled) throw new Error('Browser action cancelled');
+    if (command.cancelled || command.recordingParent?.cancelled)
+      throw new Error('Browser action cancelled');
+    if (command.recordingParent) {
+      const capture = this.recordings.capture.active;
+      if (
+        !capture ||
+        capture.closed ||
+        capture.command !== command.recordingParent ||
+        capture.error
+      )
+        throw new Error('Recorded step capture stopped or failed.');
+      if (Date.now() - capture.started > 15000)
+        throw new Error('Recorded step exceeded 15 seconds.');
+    }
     if (!this.enabled) throw new Error('Enable browser access in Bridge settings first.');
     if (!/^ses[\w-]+$/.test(command.sessionID || '') || !command.generation)
       throw new Error('Invalid browser session');
@@ -192,12 +213,20 @@ export class SessionBrowser {
     const binding = (this.bindings[sessionID] ||= { tabs: [] });
     binding.paused = paused;
     binding.generation = crypto.randomUUID();
+    await Promise.all(
+      binding.tabs.flatMap((tab) => [
+        this.inspections.remove(tab.id),
+        this.recordings.removed(tab.id),
+      ]),
+    );
     await this.save(sessionID);
     if (paused) this.publish({ type: 'pause', sessionID });
   }
 
   async remove(tabID) {
     this.documents.delete(tabID);
+    await Promise.all([this.recordings.removed(tabID), this.inspections.remove(tabID)]);
+    await this.debuggers.clear(tabID);
     this.frameDocuments.delete(tabID);
     for (const [sessionID, binding] of Object.entries(this.bindings)) {
       if (!binding.tabs.some((tab) => tab.id === tabID)) continue;
@@ -237,12 +266,20 @@ export class SessionBrowser {
         this.chrome.tabs.sendMessage(tab.id, { type: 'opencode-disable' }).catch(() => {}),
       ),
     );
-    await Promise.all([invalidated, ...notifications]);
+    await Promise.all([
+      invalidated,
+      ...notifications,
+      this.recordings.suspend(),
+      this.inspections.suspend(),
+    ]);
+    await this.debuggers.clear();
     await this.refreshIndicators();
   }
 
   async cancel(command) {
     command.cancelled = true;
+    if (command.tool === 'finish_recording')
+      await this.recordings.abortExport(command.args.recordingID);
     if (
       command.executingTabID !== undefined &&
       this.owner(command.executingTabID)?.[0] === command.sessionID
@@ -254,6 +291,9 @@ export class SessionBrowser {
   }
 
   async run(command) {
+    // Stop controls must be able to interrupt pending attachment/capture rather than queue behind it.
+    if (['cancel_recording', 'stop_inspection'].includes(command.tool))
+      return this.execute(command);
     // Register arriving work immediately, even if it must wait behind maintenance.
     if (this.bindings[command.sessionID])
       this.bindings[command.sessionID].lastActivity = Date.now();
@@ -276,6 +316,24 @@ export class SessionBrowser {
   async execute(command) {
     const binding = this.assert(command),
       args = command.args || {};
+    if (command.tool === 'start_recording') return this.recordings.start(command);
+    if (command.tool === 'run_recording_step') return this.recordings.step(command);
+    if (command.tool === 'finish_recording') return this.recordings.finish(command);
+    if (command.tool === 'cancel_recording') return this.recordings.cancel(command);
+    if (
+      [
+        'start_inspection',
+        'stop_inspection',
+        'network_requests',
+        'network_request',
+        'console_logs',
+        'start_cpu_profile',
+        'stop_cpu_profile',
+        'start_performance_trace',
+        'stop_performance_trace',
+      ].includes(command.tool)
+    )
+      return this.inspections.run(command);
     if (command.tool === 'open_tab') {
       const url = args.url || 'about:blank';
       if (url !== 'about:blank' && !/^https?:\/\//.test(url))
@@ -520,19 +578,19 @@ export class SessionBrowser {
     if (this.clickingTabs.has(tabID)) throw new Error('Another click is in progress on this tab.');
     this.clickingTabs.add(tabID);
     const debuggee = { tabId: tabID };
-    let attached = false;
+    let lease;
     let pressAttempted = false;
     try {
       await this.#validateClick(command, tabID, target);
       const point = await this.#inputPoint(command, tabID, target);
       try {
-        await this.chrome.debugger.attach(debuggee, '1.3');
+        lease = await this.debuggers.acquire(command, tabID);
       } catch {
+        this.assert(command);
         throw new Error(
           'Could not attach browser input. Close DevTools on this tab and check the extension debugger permission. No click was dispatched.',
         );
       }
-      attached = true;
       this.#assertClick(command, tabID, target);
       await this.chrome.debugger.sendCommand(debuggee, 'Input.dispatchMouseEvent', {
         type: 'mouseMoved',
@@ -574,8 +632,51 @@ export class SessionBrowser {
         );
       throw error;
     } finally {
-      if (attached) await this.chrome.debugger.detach(debuggee).catch(() => {});
+      await this.debuggers.release(lease);
       this.clickingTabs.delete(tabID);
     }
+  }
+
+  async recordingInspect(command, tabID, checks) {
+    this.assert(command);
+    if (this.owner(tabID)?.[0] !== command.sessionID)
+      throw new Error('Recording requires an owned tab.');
+    const tab = await this.chrome.tabs.get(tabID);
+    if (!/^https?:\/\//.test(tab.url || ''))
+      throw new Error('Recording requires an HTTP/HTTPS page.');
+    if (tab.status === 'loading') return { passed: false };
+    await this.chrome.scripting.executeScript({ target: { tabId: tabID }, files: ['content.js'] });
+    this.assert(command);
+    const results = await this.chrome.scripting.executeScript({
+      target: { tabId: tabID },
+      func: (input) => globalThis.__opencodeChrome.run('inspect_conditions', input),
+      args: [{ checks }],
+    });
+    this.assert(command);
+    return { passed: results[0]?.result?.passed === true };
+  }
+
+  async recordingAction(command, tabID, action) {
+    command.executingTabID = tabID;
+    const { selector, ...args } = action;
+    const nested = {
+      ...command,
+      recordingParent: command,
+      tool: action.tool,
+      args: { ...args, tabID },
+    };
+    delete nested.args.tool;
+    if (selector) {
+      const target = await this.#pageAction(
+        { ...nested, tool: 'resolve_target', args: { selector, rejectPassword: true } },
+        await this.chrome.tabs.get(tabID),
+      );
+      this.assert(command);
+      if (!target?.ref || !target.documentID) throw new Error('Recorded selector did not resolve.');
+      this.documents.set(tabID, target.documentID);
+      nested.args.ref = target.ref;
+    }
+    // The parent recorded step already holds this session's execution lock.
+    return this.execute(nested);
   }
 }

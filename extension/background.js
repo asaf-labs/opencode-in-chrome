@@ -140,7 +140,9 @@ function connectSocket() {
         return;
       }
       commands.set(message.id, message);
-      const previous = queues.get(message.sessionID) || Promise.resolve();
+      const previous = ['cancel_recording', 'stop_inspection'].includes(message.tool)
+        ? Promise.resolve()
+        : queues.get(message.sessionID) || Promise.resolve();
       const next = previous
         .catch(() => {})
         .then(() => {
@@ -272,6 +274,7 @@ function dispatch(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message.target === 'recording-offscreen') return false;
   if (sender.id !== chrome.runtime.id) return false;
   if (sender.tab) {
     // Content scripts can only hide the dot for their own verified owned tab.

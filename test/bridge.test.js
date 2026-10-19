@@ -79,7 +79,7 @@ test('real MCP creates tabs for new sessions automatically and enforces session 
   await mcp.connect(serverTransport);
   await client.connect(clientTransport);
   t.after(() => client.close());
-  assert.equal((await client.listTools()).tools.length, 14);
+  assert.equal((await client.listTools()).tools.length, 27);
   const call = (sessionID, name, args = {}) =>
     client.callTool({ name, arguments: args, _meta: { 'ai.opencode/sessionID': sessionID } });
   const text = (result) => JSON.parse(result.content[0].text);

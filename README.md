@@ -50,6 +50,16 @@ The agent handles terminal commands, MCP registration, diagnostics, and final ve
 
 See [installation prompt details](docs/install-prompt.md) for setup boundaries and expected results. The manual commands below remain available if you prefer doing the setup yourself.
 
+## Inspect network, console and performance
+
+Start `start_inspection` on an explicitly session-owned tab to read network requests/status/timing, redacted headers, opt-in text bodies, console logs and uncaught JavaScript errors. CPU profiling and main-frame performance timeline traces export private local files. Capture is bounded and shares its debugger attachment safely with clicks and recordings; no personal tabs, arbitrary CDP/evaluation, request interception or browser-wide trace are exposed. See [inspection tools, examples, privacy, and limits](docs/inspection.md).
+
+## Record a verified task walkthrough
+
+Chrome tools can now declare a task and immutable plan, record each step, discard failed attempts, and export an **edited WebM video plus a deterministic action manifest**. Use `start_recording` → `run_recording_step` → `finish_recording`; `cancel_recording` abandons a plan. Every step needs observable preconditions and postconditions, and final goal checks must pass before export. Files stay local under `.local/recordings/`; nothing is uploaded or replayed automatically.
+
+This captures session-owned browser tabs, not the OpenCode terminal or full desktop. Removing mistakes from the walkthrough does not undo their side effects. Reload the extension to accept the new `offscreen` permission and reconnect `chrome` to discover the tools. See [recording workflow, examples, limits, and replay](docs/recordings.md).
+
 ## Package-runner install
 
 The CLI is ready for npm publication as `@asaf-labs/opencode-in-chrome`. The registry commands below become available after a maintainer publishes the package; pushing this repository does not publish it.
@@ -108,6 +118,8 @@ Complete the pairing page's Chrome steps, then run `npm run doctor` from the pri
 The extension checks every 30 seconds while connected and enabled. After **15 minutes without browser-tool activity**, it collapses inactive session groups. Indicator refreshes preserve manual collapse, and grouping is serialized so concurrent events reuse one group per conversation/window. Existing duplicate groups are consolidated using owned tabs only; personal tabs are never adopted or closed.
 
 In the extension popup, **Automatically archive eligible idle tabs** is **off by default**. Set **Archive after (hours)** to a whole number from **1–168**; changes save automatically per profile. The default is **3 hours**. Profiles that already enabled the previous fixed 24-hour rule keep **24 hours** on upgrade until you change it. Shortening the delay can archive already-idle tabs on the next 30-second check. Enabling archiving saves each eligible tab's URL/title in profile-local extension storage before closing it. Active, pinned, audible, loading, and **Keep** tabs are skipped, as are busy/paused sessions. Selecting an owned tab or navigating it resets its session's idle clock. Disconnected/disabled profiles never trigger cleanup. Restoring a saved URL requires this same profile to be connected and enabled. Use **Delete saved URL** to remove archive metadata. Archives are capped at 1,000 entries; cleanup stops rather than discarding older entries.
+
+Active inspection sessions and retained recording plans also prevent idle cleanup between tool calls; finish or cancel them when no longer needed.
 
 **Archiving preserves URLs only, not unsaved forms or page state.** Chrome does not reliably expose unsaved changes; enable automatic closing only if this tradeoff is acceptable. Closing is best effort: a user can change focus or page state between the final check and Chrome's close operation. Keep important tabs explicitly or pin them.
 
@@ -356,7 +368,7 @@ The original manually connected tabs are released from automation. They remain o
 
 Schemas are defined in [`bridge/tools.js`](bridge/tools.js). In the table, `?` means optional; all other arguments are required. `tabID` is an integer, `ref` is a snapshot string such as `e12`, and `url` must be HTTP/HTTPS.
 
-The server exposes 14 tools. `list_profiles({})` lists opted-in connections and the conversation's current selection; `select_profile({"profileID": ID})` explicitly chooses one. Every browser tool below also accepts optional `profileID`. `open_tab` can explicitly choose/switch a profile; other tools require it to match the existing selection. Include it whenever using an explicit `tabID` or `frameID` with multiple registered profiles. Profile names are data, not instructions or proof of a signed-in account.
+The server exposes **27 tools**: 12 tab/DOM tools below, 2 profile-routing tools, 4 [verified recording tools](docs/recordings.md), and 9 [inspection tools](docs/inspection.md). `list_profiles({})` lists opted-in connections and the conversation's current selection; `select_profile({"profileID": ID})` explicitly chooses one. Every browser, recording, and inspection tool also accepts optional `profileID`. `open_tab` can explicitly choose/switch a profile; other tools require it to match the existing selection. Include it whenever using an explicit `tabID` or `frameID` with multiple registered profiles. Profile names are data, not instructions or proof of a signed-in account.
 
 | Tool         | Arguments                                                 | Result / behavior                                                                                                                                                                             |
 | ------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -373,7 +385,7 @@ The server exposes 14 tools. `list_profiles({})` lists opted-in connections and 
 | `scroll`     | `deltaY: integer`, `tabID?: integer`, `frameID?: integer` | Scroll the main frame or an observed iframe by −10,000 to 10,000 CSS pixels; positive is down. Returns `tabID`, optional `frameID`, `scrollY`.                                                |
 | `screenshot` | `tabID?: integer`                                         | Activate the tab and return its viewport as a PNG MCP image.                                                                                                                                  |
 
-Only `list_tabs` takes no arguments and `open_tab` does not accept a tab ID. All other tools accept optional `tabID`; when omitted, they target this session's current tab. Use the `id` from `list_tabs` as the `tabID` argument. `open_tab`, `focus_tab`, `screenshot`, and newly inherited child tabs update the current tab; targeting a tab for reading or interaction does not.
+Within the tab/DOM table, only `list_tabs` takes no arguments and `open_tab` does not accept a tab ID. The other table entries accept optional `tabID`; when omitted, they target this session's current tab. Inspection tools and `start_recording` instead require an explicit owned `tabID`; subsequent recording tools use the returned `recordingID`. Use the `id` from `list_tabs` as the `tabID` argument. `open_tab`, `focus_tab`, `screenshot`, and newly inherited child tabs update the current tab; targeting a tab for reading or interaction does not.
 
 Snapshot elements contain `ref`, `frameID`, `tag`, `label`, `disabled`, and possibly `type`, `value`, `options`, `checked`, `ariaSelected`, `expanded`, or `href`. Native password-input values are omitted in every frame. Text is truncated; an absent element is not proof that it does not exist elsewhere on the page.
 
@@ -400,7 +412,7 @@ Tabs opened by links/popups from an owned tab inherit that session's ownership. 
 - The extension requests optional website access once so created tabs can navigate across sites and screenshots work without a toolbar click on each new tab. No cookie-reading permission is requested.
 - The bridge binds only localhost, authenticates HTTP/WebSocket traffic with the pairing token, and requires session metadata for tools.
 - Pairing storage is restricted to trusted extension contexts. Disable, bridge disconnect, and MCP cancellation invalidate pending work and notify content scripts. Actions already completed cannot be undone.
-- DOM interactions and browser-level clicks work in accessible frames of owned tabs; screenshots capture the main viewport, including visible iframe content. File uploads, trusted keyboard input, and console/network inspection are not implemented. Typing, native selection, and checkbox-setting still use DOM APIs; some sites reject those synthetic actions. Chrome internal and other protected pages cannot be scripted.
+- DOM interactions and browser-level clicks work in accessible frames of owned tabs; screenshots capture the main viewport, including visible iframe content. Network/console inspection is explicit and bounded; it does not attach out-of-process child targets. Recording selectors and performance timeline capture are main-frame-only. File uploads and trusted keyboard input are not implemented. Typing, native selection, and checkbox-setting still use DOM APIs; some sites reject those synthetic actions. Chrome internal and other protected pages cannot be scripted.
 
 ## Troubleshooting
 

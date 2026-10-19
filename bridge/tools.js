@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import { recordingToolDefinitions } from './recording-tools.js';
+import { saveRecordingArtifacts } from './recording-artifacts.js';
+import { inspectionToolDefinitions } from './inspection-tools.js';
+import { saveInspectionArtifact } from './inspection-artifacts.js';
+
+function artifactPayload(result) {
+  if (!result.profileID) return result;
+  const payload = { ...result };
+  delete payload.profileID;
+  return payload;
+}
 
 function defineBrowserTools() {
   const ref = z
@@ -78,6 +89,8 @@ function defineBrowserTools() {
     ],
     ['navigate', 'Navigate a session-owned tab to an HTTP or HTTPS URL.', { tabID, url }],
     ['screenshot', 'Capture a session-owned tab’s viewport. This activates the tab.', { tabID }],
+    ...recordingToolDefinitions,
+    ...inspectionToolDefinitions,
   ];
   return [
     [
@@ -100,7 +113,11 @@ function defineBrowserTools() {
 
 export const browserToolDefinitions = defineBrowserTools();
 
-export function registerBrowserTools(server, hub) {
+export function registerBrowserTools(
+  server,
+  hub,
+  { saveRecording = saveRecordingArtifacts, saveInspection = saveInspectionArtifact } = {},
+) {
   for (const [name, description, inputSchema] of browserToolDefinitions) {
     server.registerTool(name, { description, inputSchema }, async (args, extra) => {
       try {
@@ -117,6 +134,43 @@ export function registerBrowserTools(server, hub) {
               ...(result.profileID
                 ? [{ type: 'text', text: JSON.stringify({ profileID: result.profileID }) }]
                 : []),
+            ],
+          };
+        if (name === 'finish_recording') {
+          const exported = await saveRecording(artifactPayload(result));
+          await hub
+            .call(
+              extra._meta?.['ai.opencode/sessionID'],
+              'cancel_recording',
+              {
+                recordingID: args.recordingID,
+                ...(result.profileID ? { profileID: result.profileID } : {}),
+              },
+              extra.signal,
+            )
+            .catch(() => {});
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ...exported,
+                  ...(result.profileID ? { profileID: result.profileID } : {}),
+                }),
+              },
+            ],
+          };
+        }
+        if (name === 'stop_cpu_profile' || name === 'stop_performance_trace')
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ...(await saveInspection(artifactPayload(result))),
+                  ...(result.profileID ? { profileID: result.profileID } : {}),
+                }),
+              },
             ],
           };
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };

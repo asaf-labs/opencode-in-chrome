@@ -4,7 +4,7 @@
   "version": "0.7.0",
   "description": "Let OpenCode sessions create and control their own Chrome tabs through MCP.",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "scripting", "alarms", "tabGroups", "debugger"],
+  "permissions": ["storage", "scripting", "alarms", "tabGroups", "debugger", "offscreen"],
   "host_permissions": ["http://127.0.0.1/*"],
   "optional_host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },

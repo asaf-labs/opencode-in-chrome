@@ -425,3 +425,55 @@ test('click preparation rejects disabled, inert, and off-viewport targets', asyn
   button.getBoundingClientRect = () => ({ left: -20, right: 80, top: 10, bottom: 30 });
   assert.equal((await run('click', args)).clickTarget.x, 40);
 });
+
+test('recording targets resolve unique selectors, reject passwords, and expose stable snapshot selectors', (t) => {
+  const { run, document } = page(t);
+  const snapshot = run('read_page');
+  assert.equal(document.querySelector(snapshot.elements[0].selector).id, 'button');
+  assert.equal(run('resolve_target', { selector: '#button' }).documentID, snapshot.documentID);
+  assert.throws(() => run('resolve_target', { selector: 'input' }), /exactly one/);
+  assert.throws(
+    () => run('resolve_target', { selector: '#secret', rejectPassword: true }),
+    /Password/,
+  );
+});
+
+test('recording conditions inspect observable state without revealing password values', (t) => {
+  const { run } = page(t);
+  assert.equal(
+    run('inspect_conditions', {
+      checks: [
+        { selector: '#name', value: 'Old' },
+        { selector: '#box', checked: false },
+        { url: 'https://example.com/' },
+      ],
+    }).passed,
+    true,
+  );
+  assert.equal(
+    run('inspect_conditions', { checks: [{ selector: '#name', value: 'Wrong' }] }).passed,
+    false,
+  );
+  assert.equal(
+    run('inspect_conditions', { checks: [{ selector: '#secret', value: 'private' }] }).passed,
+    false,
+  );
+  assert.equal(
+    run('inspect_conditions', { checks: [{ selector: '#missing', visible: false }] }).passed,
+    true,
+  );
+  assert.equal(
+    run('inspect_conditions', { checks: [{ selector: 'input', visible: true }] }).passed,
+    false,
+  );
+});
+
+test('recording selectors also resolve anonymous buttons without ephemeral refs', (t) => {
+  const { run, document } = page(t);
+  const button = document.getElementById('button');
+  button.removeAttribute('id');
+  const entry = run('read_page').elements.find((element) => element.tag === 'button');
+  assert.ok(entry.selector);
+  assert.equal(document.querySelectorAll(entry.selector).length, 1);
+  assert.equal(document.querySelector(entry.selector), button);
+});

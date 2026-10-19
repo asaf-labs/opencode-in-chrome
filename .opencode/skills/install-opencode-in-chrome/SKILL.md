@@ -46,6 +46,8 @@ Automatic closing is off by default. Do not enable it on the user's behalf durin
 
 ## Repairs
 
+- **Missing recording/inspection tools after upgrade:** the current catalog has 27 tools. Reload the extension in each opted-in profile and approve the added offscreen permission if prompted. A shared daemon must be restarted to load the new catalog; coordinate and obtain authorization before stopping it because every project/profile using it is interrupted. Reconnect MCP adapters afterward. Capture remains explicit; do not enable network bodies or start recording as an installation diagnostic on a private page. See docs/inspection.md and docs/recordings.md for profile-aware workflows, privacy limits, and the separate manual extension smoke test.
+
 - **Page activity indicator is distracting:** click the orange dot, then Hide for this tab. To restore it, use Show page activity dot under that owned tab in the extension popup. This hides only the dot/status panel, not automation or its cursor; use Disable this profile to stop browser access. Chrome tab groups and the AI badge remain visible. There is no permanent page banner in the current extension; reload the correct unpacked extension if an old banner persists.
 
 - **Missing script: setup:** commands ran in the target application. Run installation/setup from the extension checkout; MCP registration belongs in the target project.

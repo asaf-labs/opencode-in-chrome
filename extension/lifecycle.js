@@ -38,6 +38,14 @@ export class TabLifecycle {
     try {
       for (const [sessionID, binding] of Object.entries(this.browser.bindings)) {
         if (this.browser.sessionWork.has(sessionID)) continue;
+        // Declared recordings and inspection sessions are still using these tabs between tool calls.
+        if (
+          this.browser.recordings?.sessions.has(sessionID) ||
+          [...(this.browser.inspections?.states.values() || [])].some(
+            (state) => state.sessionID === sessionID,
+          )
+        )
+          continue;
         await this.browser.serial(this.browser.sessionWork, sessionID, async () => {
           const idle = this.now() - (binding.lastActivity || this.now());
           if (idle < 15 * 60_000 || binding.paused) return;
