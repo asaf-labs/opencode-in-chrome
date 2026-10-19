@@ -13,10 +13,18 @@ export class InspectionProfiles {
     });
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID },
-      func: (name, input) => globalThis.__opencodePerformance[name](...input),
+      func: async (name, input) => {
+        try {
+          return await globalThis.__opencodePerformance[name](...input);
+        } catch (error) {
+          return { opencodeError: error.message };
+        }
+      },
       args: [method, args],
     });
-    return results[0]?.result;
+    const result = results[0]?.result;
+    if (typeof result?.opencodeError === 'string') throw new Error(result.opencodeError);
+    return result;
   }
 
   async start(command, state, kind) {

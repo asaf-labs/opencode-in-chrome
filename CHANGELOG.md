@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Return page action, click/frame guard, recording-condition, and performance-helper exceptions through the normal tool-error path instead of letting them escape as uncaught injected-script errors. Preserve fail-closed checks, input cleanup, and no-retry behavior.
 - Debounce idle debugger detach for 30 seconds after successful ordinary clicks, reusing attachments across action bursts to reduce Chrome-banner flicker. Preserve immediate safety cleanup and explicit recording/inspection stop, with ownership/generation checks and stale-timer guards.
 - Integrate inspection/recordings with profile-aware routing, iframe actions, quiet activity indicators, and configurable cleanup; export profile-tagged artifact summaries without raw payloads and exclude retained captures from idle cleanup.
 - Add session-owned network inspection, redacted headers and opt-in bodies, console/error logs, bounded CPU profiles, and main-frame performance timeline trace exports.

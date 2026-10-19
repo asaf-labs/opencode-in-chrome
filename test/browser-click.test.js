@@ -69,13 +69,19 @@ test(
     const browser = new SessionBrowser(chrome);
     t.after(() => browser.suspend());
     browser.enabled = true;
+    const injectionErrors = [];
     chrome.scripting.executeScript = async (request) => {
       if (request.files) {
         await cdp.evaluate(content, contextID);
         return [];
       }
       const expression = `(${request.func.toString()})(...${JSON.stringify(request.args || [])})`;
-      return [{ result: await cdp.evaluate(expression, contextID) }];
+      try {
+        return [{ result: await cdp.evaluate(expression, contextID) }];
+      } catch (error) {
+        injectionErrors.push(error.message);
+        throw error;
+      }
     };
     const send = chrome.debugger.sendCommand;
     chrome.debugger.sendCommand = async (target, method, params) => {
@@ -140,6 +146,7 @@ test(
       /covered/,
     );
     assert.equal(chrome.debuggerCalls.length, before);
+    assert.deepEqual(injectionErrors, []);
     assert.deepEqual(await cdp.evaluate('events'), []);
     await browser.suspend();
     assert.equal(chrome.debuggerTabs.size, 0);

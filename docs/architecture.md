@@ -72,6 +72,8 @@ For `click`, the content script prepares viewport CSS coordinates from a visible
 
 MCP cancellation and timeouts send `cancel` to the worker. Queued work is marked cancelled; executing page interactions receive an extension message. Disable and disconnect notify all owned tabs. These are best-effort stops, not rollback: an already-issued Chrome call or network request may complete.
 
+Bundled page actions, click/frame validation, recording conditions, and performance helpers catch their own exceptions inside the injected function, returning a small `opencodeError` envelope. The worker converts that envelope back to a normal tool failure. This avoids leaking expected refusals into Chrome's uncaught extension-error reporting while retaining the original message, cancellation/cleanup, pre-press guards, and post-press uncertain-outcome warning. Transport/permission/injection failures still reject normally. `test/page-errors.test.js` executes the actual injected callbacks in isolated VM contexts; the real-Chrome click regression also checks that a covered-target refusal does not escape as a script-evaluation exception.
+
 ## Persistence and trust
 
 ### Idle tab maintenance

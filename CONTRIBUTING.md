@@ -54,6 +54,8 @@ For the activity UI, verify there is no idle banner or page border; actions show
 
 For Chrome's native debugging banner, run several successful clicks less than 30 seconds apart and verify the debugger is reused instead of detached after each click. With no inspection/recording lease, verify detach after 30 idle seconds; disable/disconnect, pause, tab closure, protected navigation, and Chrome's Cancel must clear it without waiting. The native banner cannot be hidden while attached, and its initial/final layout changes are still possible. Use `node --test test/debugger-sessions.test.js` for deterministic timer cases.
 
+For expected guard errors, deliberately cover or move a target in a disposable test page. Verify the tool fails before mouse-down and instructs fresh inspection without creating a new uncaught injection error. Old Chrome extension-error entries remain until manually cleared; distinguish them from newly reproduced errors after reloading the worker. `node --test test/page-errors.test.js` covers page actions, hover validation, iframe contexts/projection, recording conditions, and performance-helper errors. Do not weaken guards or add blind retries to make tests pass.
+
 ### Tab cleanup smoke test
 
 - Reload the updated extension in a disposable profile. Verify automatic archiving starts **off**, and indicator refresh/reconnection preserves a manually collapsed group.
