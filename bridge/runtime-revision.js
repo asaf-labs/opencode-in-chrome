@@ -1,4 +1,4 @@
-import { readdir, readFile, lstat } from 'node:fs/promises';
+import { readdir, readFile, lstat, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -7,6 +7,7 @@ import { digestFiles, extensionRevision } from '../extension/update-revision.js'
 export const runtimeRoot = fileURLToPath(new URL('../', import.meta.url));
 
 export async function runtimeRevision(root = runtimeRoot) {
+  root = await realpath(root);
   const files = ['package.json', 'package-lock.json'];
   for (const directory of ['bridge', 'scripts', 'extension']) {
     for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {

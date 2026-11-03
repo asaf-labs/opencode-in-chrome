@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, readFile, mkdtemp, cp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { readdir, readFile, mkdtemp, cp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { extensionFiles, extensionRevision } from '../extension/update-revision.js';
@@ -32,6 +32,9 @@ test('revision manifests cover all extension files and fingerprint runtime bytes
   const copied = await runtimeRevision(root);
   assert.equal(copied.revision, revision.revision);
   assert.notEqual(copied.installation, revision.installation);
+  const alias = path.join(root, 'installation-alias');
+  await symlink(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.deepEqual(await runtimeRevision(alias), copied);
   await mkdir(path.join(root, '.local'));
   await writeFile(path.join(root, '.local/config.json'), 'private fixture, never hashed');
   assert.deepEqual(await runtimeRevision(root), copied);
