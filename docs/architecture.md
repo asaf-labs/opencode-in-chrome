@@ -44,6 +44,10 @@ With `--global`, it registers `bridge/shared-main.js` globally and does not writ
 
 ## Connection lifecycle
 
+Shared-mode `shared-main.js` is a stable MCP supervisor. `RefreshingAdapter` starts `shared-adapter.js` in a fresh process on runtime-fingerprint changes at an idle request boundary and announces a new tool catalog. The adapter checks the daemon revision on next use. Authenticated `/activate` compares installation/daemon identity, closes admission, and prepares every connected profile before committing reloads and stopping the old daemon. Source races, missing support, active commands, retained captures and persistence failures defer or fail closed. Only pre-dispatch maintenance is retried; browser tool requests are never replayed.
+
+`ExtensionUpdates` checks private worker busy/capture state, checkpoints native target identities for 60 seconds when reload is needed, and restores only matching existing tabs after session-storage clearing. The loaded extension fingerprint also scopes content-helper injection so unchanged manual content-version numbers cannot keep stale helpers alive. Profile routing stays in its existing durable file; pairing, enabled state and archives are unchanged. See [automatic update activation](updates.md) for bootstrap, catalog-client and permission limitations.
+
 1. The worker restricts storage to trusted extension contexts and restores session-owned tabs from `chrome.storage.session`. It starts suspended and invalidates old generations.
 2. It connects to the configured loopback URL, rechecks website permission, and sends `hello` with the token, enabled preference, and ownership bindings.
 3. The bridge checks host/origin, authenticates the token, and validates all ownership bindings before replacing a connected browser. It replies `ready`.

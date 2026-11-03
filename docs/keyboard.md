@@ -28,4 +28,6 @@ Keyboard tools are not supported in recording plans. Real-Chrome tests cover a l
 
 ## Activate after upgrade
 
+Once the [automatic-update mechanism is bootstrapped](updates.md), subsequent shared-mode local updates activate on next use at a safe idle boundary. The manual steps below remain necessary for that initial bootstrap, older running versions, legacy project-local mode and permission/client limitations.
+
 Update the installation, reload the unpacked extension in each opted-in profile (content version 10), and reconnect the MCP adapters to discover **29 tools**. In shared mode, coordinate and obtain authorization before `npm run stop:shared` from the installation directory: stopping the daemon interrupts all connected projects/profiles. Reconnecting then starts the updated daemon; reconnecting adapters alone does not update an already-running daemon. Verify both new tools appear before use. Updating code does not itself activate Chrome-side changes or authorize edits.

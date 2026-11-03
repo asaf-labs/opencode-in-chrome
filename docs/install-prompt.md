@@ -24,6 +24,8 @@ The extension [collapses inactive groups after 15 minutes](../README.md#automati
 
 ## Keyboard-tool upgrades
 
+For future shared-mode updates, bootstrap [automatic activation](updates.md) once with a coordinated daemon restart, profile extension reloads and MCP reconnect. Afterward installed local code activates on next use when idle; never fetch code, install dependencies, approve permissions or discard captures merely to trigger activation.
+
 The current catalog has 29 tools, including `press_key` and `insert_text`. Updating the checkout alone does not activate them: reload the unpacked extension in each opted-in profile (content version 10), coordinate authorization before stopping a shared daemon with `npm run stop:shared`, then reconnect MCP adapters and verify both tools appear. Adapter reconnection alone does not reload a running daemon. Preserve pairing/profile settings; keyboard support needs no clipboard access. Use the [focus-token workflow](keyboard.md), never a production spreadsheet write as an installation smoke test.
 
 ## Credential handling

@@ -1,6 +1,7 @@
 import { SessionBrowser } from './session-browser.js';
 import { TabLifecycle } from './lifecycle.js';
 import { migrateCleanupSettings, validateArchiveHours } from './cleanup-settings.js';
+import { ExtensionUpdates, restoreUpdateCheckpoint } from './updates.js';
 
 let socket,
   ready = false,
@@ -18,13 +19,24 @@ const browser = new SessionBrowser(chrome, (message) => {
   if (ready) send(message);
 });
 const lifecycle = new TabLifecycle(browser, chrome);
+const updates = new ExtensionUpdates(chrome, browser, {
+  busy: () =>
+    commands.size > 0 ||
+    queues.size > 0 ||
+    lifecycle.running ||
+    browser.sessionWork.size > 0 ||
+    browser.groupWork.size > 0 ||
+    browser.recordings.sessions.size > 0 ||
+    browser.inspections.states.size > 0,
+});
+browser.contentRevision = updates.loaded;
 const initialized = Promise.all([
   chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
   chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
 ])
   .then(() =>
     Promise.all([
-      chrome.storage.local.get('settings'),
+      chrome.storage.local.get(['settings', 'updateCheckpoint']),
       chrome.storage.session.get('ownedSessionsV2'),
     ]),
   )
@@ -50,7 +62,8 @@ const initialized = Promise.all([
       await chrome.storage.local.set({ settings });
     }
     browser.enabled = false;
-    await browser.restore(session.ownedSessionsV2);
+    const checkpoint = await restoreUpdateCheckpoint(chrome, local.updateCheckpoint);
+    await browser.restore(session.ownedSessionsV2 || checkpoint);
     await lifecycle.load();
     await browser.suspend();
   });
@@ -61,7 +74,7 @@ chrome.alarms.onAlarm.addListener(() => {
   void initialized
     .then(() =>
       lifecycle.sweep({
-        connected: () => ready && settings.enabled === true,
+        connected: () => ready && settings.enabled === true && !updates.locked,
         autoArchive: () => settings.autoArchive === true,
         archiveAfterHours: () => settings.archiveAfterHours,
       }),
@@ -91,7 +104,10 @@ function connectSocket() {
   socket = ws;
   ws.onopen = async () => {
     await suspended;
-    const permitted = await chrome.permissions.contains({ origins: ['<all_urls>'] });
+    const [permitted, extensionRevision] = await Promise.all([
+      chrome.permissions.contains({ origins: ['<all_urls>'] }),
+      updates.loaded,
+    ]);
     if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
     authorized = settings.enabled === true && permitted;
     ws.send(
@@ -102,6 +118,8 @@ function connectSocket() {
         enabled: authorized,
         bindings: browser.bindings,
         profile: { id: settings.profileID, name: settings.profileName },
+        updateSupport: 1,
+        extensionRevision,
       }),
     );
   };
@@ -116,6 +134,47 @@ function connectSocket() {
     }
     if (!message || typeof message !== 'object') {
       ws.close();
+      return;
+    }
+    if (message.type === 'update' && ready) {
+      const work = async () => {
+        await settingsQueue;
+        if (message.method === 'prepare')
+          return updates.prepare(message.activationID, message.revision);
+        if (message.method === 'release') {
+          updates.release(message.activationID);
+          return { released: true };
+        }
+        if (message.method === 'commit')
+          return { committed: true, reload: await updates.commit(message.activationID) };
+        throw new Error('Unknown extension update request.');
+      };
+      void work().then(
+        (result) => {
+          if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: 'update_result', id: message.id, result }));
+          if (result.reload)
+            setTimeout(() => {
+              void suspended
+                .then(() => settingsQueue)
+                .then(() => {
+                  if (!updates.canReload(message.activationID)) return;
+                  chrome.runtime.reload();
+                })
+                .catch(() => {
+                  updates.release(message.activationID);
+                  connectionError =
+                    'Automatic extension reload was deferred or failed. Reload this extension manually.';
+                });
+            }, 100);
+        },
+        (error) => {
+          if (socket === ws && ws.readyState === WebSocket.OPEN)
+            ws.send(
+              JSON.stringify({ type: 'update_result', id: message.id, error: error.message }),
+            );
+        },
+      );
       return;
     }
     if (message.type === 'ready') {
@@ -135,6 +194,16 @@ function connectSocket() {
       }, 20000);
     }
     if (message.type === 'command') {
+      if (updates.locked) {
+        ws.send(
+          JSON.stringify({
+            type: 'result',
+            id: message.id,
+            error: 'Browser update is activating; no action was dispatched.',
+          }),
+        );
+        return;
+      }
       if (!ready) {
         ws.close();
         return;
@@ -174,6 +243,7 @@ function connectSocket() {
     if (socket !== ws) return;
     ready = false;
     authorized = false;
+    updates.disconnected();
     if (event?.code === 4009)
       connectionError =
         'This profile identity is already connected. Install/pair a fresh extension copy in a cloned Chrome profile.';
@@ -187,6 +257,8 @@ function connectSocket() {
 
 async function handle(message) {
   await initialized;
+  if (updates.locked && message.type !== 'state' && message.type !== 'disable')
+    throw new Error('Browser update is activating. Try settings again after reconnection.');
   if (message.type === 'state')
     return {
       ready,

@@ -142,6 +142,8 @@ export class ProfileHub {
       enabled: profile.hub.socket?.readyState === 1 && profile.hub.browserEnabled,
       protocol: profile.hub.extensionProtocol,
       legacy: profile.id === 'legacy',
+      updateSupport: profile.hub.updateSupport === true,
+      extensionRevision: profile.hub.extensionRevision || null,
     }));
   }
 

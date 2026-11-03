@@ -21,6 +21,7 @@ export class BrowserHub {
   bindings = new Map();
   pending = new Map();
   activity = [];
+  maintenance = new Map();
 
   attach(socket, enabled = false, protocol = 1) {
     if (this.socket) this.socket.close(4001, 'Replaced connection');
@@ -38,6 +39,8 @@ export class BrowserHub {
   }
 
   reset(reason) {
+    for (const entry of this.maintenance.values()) entry.reject(new Error(reason));
+    this.maintenance.clear();
     for (const entry of this.pending.values()) entry.reject(new Error(reason));
     this.pending.clear();
     this.bindings.clear();
@@ -70,6 +73,14 @@ export class BrowserHub {
   }
 
   receive(message) {
+    if (message.type === 'update_result') {
+      const entry = this.maintenance.get(message.id);
+      if (entry) {
+        this.maintenance.delete(message.id);
+        message.error ? entry.reject(new Error(message.error)) : entry.resolve(message.result);
+      }
+      return;
+    }
     if (message.type === 'availability') {
       this.browserEnabled = message.enabled === true;
       if (!this.browserEnabled)
@@ -87,6 +98,27 @@ export class BrowserHub {
     if (!entry) return;
     this.pending.delete(message.id);
     message.error ? entry.reject(new Error(message.error)) : entry.resolve(message.result);
+  }
+
+  async update(method, id, revision) {
+    if (!this.updateSupport || this.socket?.readyState !== 1)
+      throw new Error(
+        'This profile needs a one-time manual extension reload before automatic updates.',
+      );
+    const requestID = randomUUID();
+    let timer;
+    try {
+      return await new Promise((resolve, reject) => {
+        this.maintenance.set(requestID, { resolve, reject });
+        timer = setTimeout(() => reject(new Error('Extension update check timed out.')), 5000);
+        this.socket.send(
+          JSON.stringify({ type: 'update', method, id: requestID, activationID: id, revision }),
+        );
+      });
+    } finally {
+      clearTimeout(timer);
+      this.maintenance.delete(requestID);
+    }
   }
 
   async call(sessionID, tool, args, signal) {

@@ -44,6 +44,31 @@ test('snapshot exposes visible controls without password values', (t) => {
   assert.equal(snapshot.elements.find((e) => e.tag === 'select').options[1].value, 'b');
 });
 
+test('runtime revision replaces page helpers after upgrade without changing the manual content version', (t) => {
+  const { window, document } = page(t);
+  const before = window.__opencodeChrome;
+  document.hasFocus = () => true;
+  document.getElementById('name').focus();
+  const snapshot = before.run('read_page');
+  window.__opencodeChromeRevision = 'updated-installation';
+  window.eval(script);
+  const updated = window.__opencodeChrome;
+  assert.notEqual(updated, before);
+  assert.equal(updated.version, before.version);
+  assert.equal(updated.runtimeRevision, 'updated-installation');
+  assert.throws(
+    () =>
+      before.run('keyboard_guard', {
+        documentID: snapshot.documentID,
+        focusToken: snapshot.focus.token,
+        commandID: 'stale',
+      }),
+    /disabled/,
+  );
+  window.eval(script);
+  assert.equal(window.__opencodeChrome, updated);
+});
+
 test('searchable portalled multiselect exposes cmdk options as browser click refs', async (t) => {
   const { run, document, window } = page(t);
   const portal = document.createElement('div');

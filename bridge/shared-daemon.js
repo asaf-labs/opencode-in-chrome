@@ -4,6 +4,7 @@ import { sharedConfigURL } from './shared-config.js';
 import { createSharedBridge } from './shared-server.js';
 import { listenBridge } from './listen.js';
 import { createProfileHub } from './profiles.js';
+import { runtimeRevision } from './runtime-revision.js';
 
 try {
   const configURL = sharedConfigURL();
@@ -12,7 +13,7 @@ try {
     await readFile(new URL('../package.json', import.meta.url), 'utf8'),
   );
   const hub = await createProfileHub(new URL('./profile-routing.json', configURL));
-  const bridge = createSharedBridge(config, { version, hub });
+  const bridge = createSharedBridge(config, { version, hub, runtime: await runtimeRevision() });
   await listenBridge(bridge.server, config.port);
   process.on('SIGINT', () => void bridge.close());
   process.on('SIGTERM', () => void bridge.close());
