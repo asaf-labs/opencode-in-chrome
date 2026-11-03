@@ -39,6 +39,8 @@ For manual capture smoke testing, use a disposable Chrome profile and harmless l
 
 The browser suite also tests trusted keyboard events and Unicode replacement/commit in a canvas grid with a focused hidden iframe editor. For manual keyboard testing, use [the focus-token workflow](docs/keyboard.md), verify stale tokens and background tabs fail closed, and inspect actual application state after every write. Real Google Sheets needs an explicitly authorized disposable sheet; the local fixture does not prove Sheets compatibility. Never use clipboard contents or production sheets as diagnostics.
 
+For [automatic update smoke testing](docs/updates.md), bootstrap a disposable shared installation/profile first. Change local runtime bytes without bumping the package version; on next use verify catalog notification, idle-only restart/reload, profile/Keep/indicator/ownership preservation, and fresh refs. Test an active action and retained recording/inspection defer the update, disabled profiles remain disabled, source/storage failures fail closed, and recycled numeric IDs cannot restore ownership. Automated tests use isolated daemons and simulated extension reload/checkpoint recovery; actual unpacked-extension reload/permission behavior still needs this manual test. No production-profile reload is authorized by running tests.
+
 ## Pull requests
 
 External contributors can fork this public MIT-licensed repo, create a branch, run `npm run check`, and open a PR against `main`. A PR does not grant push or merge access. Keep changes focused and include verification evidence.

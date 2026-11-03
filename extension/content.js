@@ -1,5 +1,9 @@
 (() => {
-  if (globalThis.__opencodeChrome?.version === 10) return;
+  if (
+    globalThis.__opencodeChrome?.version === 10 &&
+    globalThis.__opencodeChrome.runtimeRevision === globalThis.__opencodeChromeRevision
+  )
+    return;
   globalThis.__opencodeChrome?.dispose?.();
   globalThis.__opencodeChrome?.setEnabled?.(false);
   let refs = new Map(),
@@ -653,6 +657,7 @@
   globalThis.chrome?.runtime?.onMessage?.addListener(onMessage);
   globalThis.__opencodeChrome = {
     version: 10,
+    runtimeRevision: globalThis.__opencodeChromeRevision,
     run,
     validateClick,
     frameContext,

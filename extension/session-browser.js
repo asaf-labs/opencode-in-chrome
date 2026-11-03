@@ -71,16 +71,25 @@ export class SessionBrowser {
     );
   }
 
+  async installContent(target) {
+    const revision = await this.contentRevision;
+    if (revision)
+      await this.chrome.scripting.executeScript({
+        target,
+        func: (value) => {
+          globalThis.__opencodeChromeRevision = value;
+        },
+        args: [revision],
+      });
+    await this.chrome.scripting.executeScript({ target, files: ['content.js'] });
+  }
+
   async overlay(tabID) {
     if (!this.owner(tabID)) return;
     try {
       const tab = await this.chrome.tabs.get(tabID);
       if (!/^https?:/.test(tab.url || '') || tab.status === 'loading') return;
-      if (this.enabled)
-        await this.chrome.scripting.executeScript({
-          target: { tabId: tabID, allFrames: true },
-          files: ['content.js'],
-        });
+      if (this.enabled) await this.installContent({ tabId: tabID, allFrames: true });
       await this.chrome.scripting.executeScript({
         target: { tabId: tabID, allFrames: true },
         func: (enabled, hidden) => {
@@ -449,7 +458,7 @@ export class SessionBrowser {
       command.tool === 'read_page' && args.frameID === undefined
         ? { tabId: tabID, allFrames: true }
         : { tabId: tabID, frameIds: [frameID] };
-    await this.chrome.scripting.executeScript({ target, files: ['content.js'] });
+    await this.installContent(target);
     this.assert(command);
     if (command.tool === 'read_page') {
       const results = await this.chrome.scripting.executeScript({
@@ -675,7 +684,7 @@ export class SessionBrowser {
     if (!/^https?:\/\//.test(tab.url || ''))
       throw new Error('Recording requires an HTTP/HTTPS page.');
     if (tab.status === 'loading') return { passed: false };
-    await this.chrome.scripting.executeScript({ target: { tabId: tabID }, files: ['content.js'] });
+    await this.installContent({ tabId: tabID });
     this.assert(command);
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID },

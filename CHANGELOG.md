@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Activate installed local updates on next shared-mode tool use with runtime fingerprints, a fresh adapter subprocess/catalog notification, an all-profile idle barrier and coordinated daemon/extension reload. Preserve ownership using expiring native-target checkpoints; never replay browser actions, interrupt retained captures or fetch updates automatically. Existing versions require one manual bootstrap.
 - Add guarded trusted `press_key`/`insert_text` tools and profile/frame-scoped single-use focus tokens, without clipboard access or automatic retries. Include a real-Chrome canvas/iframe-editor regression and document spreadsheet verification limits; the catalog now has 29 tools.
 - Require installer dependencies to resolve inside the installation's own `node_modules`, not an ancestor's package cache.
 - Return page action, click/frame guard, recording-condition, and performance-helper exceptions through the normal tool-error path instead of letting them escape as uncaught injected-script errors. Preserve fail-closed checks, input cleanup, and no-retry behavior.

@@ -38,6 +38,10 @@ Use `list_profiles` before account-sensitive browser work. When multiple profile
 
 After upgrading, restart the updated daemon, reload/name/enable each extension instance, and reconnect MCP adapters for the new tools. A legacy connection cannot distinguish multiple old profile copies; upgrade each copy. Never clone profile-local extension storage or clear saved routing history as a routine repair.
 
+## Automatic local update activation
+
+Shared mode can activate already-installed local runtime changes on next tool use after a one-time bootstrap of this mechanism: coordinate daemon restart, extension reload in each participating profile and MCP reconnect. Older running versions cannot safely bootstrap themselves. Later activation waits for all profiles to be idle, preserves pairing/ownership/account selection and announces tool-list changes; retained recordings/inspection defer it until normally finished/stopped/cancelled. Never discard captures, fetch Git code, install dependencies or approve permissions just to trigger activation. Legacy project-local mode and incompatible catalog clients still need manual reconnect/reload. See docs/updates.md for the expiring native-target checkpoint and manual disposable-profile smoke test. Do not inspect private checkpoints or reload production profiles as diagnostics.
+
 ## Tab cleanup
 
 After extension changes, have the user reload the correct unpacked extension in each opted-in profile. No new permissions or pairing-token changes are required for tab cleanup. Inactive groups collapse after 15 minutes; manual collapse survives indicator refreshes. This uses browser activity, not OpenCode session-status polling or conversation-archive events.

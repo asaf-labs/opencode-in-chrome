@@ -11,7 +11,14 @@ export function sameToken(candidate, token) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function createBridgeHttp({ token, port = 8790, hub, handleRequest, status = {} }) {
+export function createBridgeHttp({
+  token,
+  port = 8790,
+  hub,
+  handleRequest,
+  status = {},
+  acceptingConnections = () => true,
+}) {
   const server = createServer(async (req, res) => {
     const host = `127.0.0.1:${server.address()?.port || port}`;
     res.setHeader('Cache-Control', 'no-store');
@@ -77,6 +84,7 @@ export function createBridgeHttp({ token, port = 8790, hub, handleRequest, statu
     const host = `127.0.0.1:${server.address()?.port || port}`;
     if (
       req.headers.host !== host ||
+      !acceptingConnections() ||
       req.url !== '/browser' ||
       !/^chrome-extension:\/\/[a-p]{32}$/.test(req.headers.origin || '')
     ) {
@@ -115,6 +123,10 @@ export function createBridgeHttp({ token, port = 8790, hub, handleRequest, statu
                 profile,
               ) || hub;
             for (const [sessionID, binding] of bindings) connection.bind(sessionID, binding);
+            connection.updateSupport = message.updateSupport === 1;
+            connection.extensionRevision = /^[a-f0-9]{64}$/.test(message.extensionRevision || '')
+              ? message.extensionRevision
+              : null;
             ws.send(JSON.stringify({ type: 'ready', profileID: profile?.id }));
             return;
           }

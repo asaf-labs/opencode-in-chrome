@@ -1,23 +1,40 @@
 import { readFile } from 'node:fs/promises';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { readConfig } from './config.js';
-import { sharedConfigURL } from './shared-config.js';
-import { ensureSharedDaemon } from './shared-process.js';
-import { SharedBrowserHub } from './shared-client.js';
-import { registerBrowserTools } from './tools.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { RefreshingAdapter } from './refreshing-adapter.js';
 
 try {
-  const configURL = sharedConfigURL();
-  const config = await readConfig(configURL);
-  await ensureSharedDaemon(config, { configURL });
   const { version } = JSON.parse(
     await readFile(new URL('../package.json', import.meta.url), 'utf8'),
   );
-  const mcp = new McpServer({ name: 'opencode-in-chrome', version });
-  registerBrowserTools(mcp, new SharedBrowserHub(config, { configURL }));
+  const mcp = new Server(
+    { name: 'opencode-in-chrome', version },
+    { capabilities: { tools: { listChanged: true } } },
+  );
+  const adapter = new RefreshingAdapter({ changed: () => mcp.sendToolListChanged() });
+  mcp.setRequestHandler(ListToolsRequestSchema, (request, extra) =>
+    adapter.use(
+      (client) => client.listTools(request.params, { signal: extra.signal }),
+      extra.signal,
+    ),
+  );
+  mcp.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    try {
+      return await adapter.use(
+        (client) => client.callTool(request.params, undefined, { signal: extra.signal }),
+        extra.signal,
+      );
+    } catch (error) {
+      return { isError: true, content: [{ type: 'text', text: error.message }] };
+    }
+  });
   await mcp.connect(new StdioServerTransport());
-  const shutdown = () => void mcp.close().finally(() => process.exit(0));
+  const shutdown = () =>
+    void adapter
+      .close()
+      .finally(() => mcp.close())
+      .finally(() => process.exit(0));
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
   process.stdin.on('end', shutdown);
