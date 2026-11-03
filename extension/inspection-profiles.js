@@ -1,4 +1,5 @@
 import { redactText, redactURL, safeCPUProfile } from './inspection-privacy.js';
+import { pageResult } from './page-call.js';
 
 export class InspectionProfiles {
   constructor(chrome, inspections) {
@@ -22,9 +23,7 @@ export class InspectionProfiles {
       },
       args: [method, args],
     });
-    const result = results[0]?.result;
-    if (typeof result?.opencodeError === 'string') throw new Error(result.opencodeError);
-    return result;
+    return pageResult(results[0]?.result);
   }
 
   async start(command, state, kind) {

@@ -89,8 +89,12 @@ export async function install({
   const require = createRequire(path.join(root, 'package.json'));
   let dependenciesInstalled = true;
   try {
-    for (const name of ['@modelcontextprotocol/sdk/server/mcp.js', 'ws', 'zod'])
-      require.resolve(name);
+    for (const name of ['@modelcontextprotocol/sdk/server/mcp.js', 'ws', 'zod']) {
+      if (!require.resolve(name).startsWith(path.join(root, 'node_modules') + path.sep)) {
+        dependenciesInstalled = false;
+        break;
+      }
+    }
   } catch {
     dependenciesInstalled = false;
   }

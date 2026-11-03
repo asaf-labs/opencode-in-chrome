@@ -70,7 +70,16 @@ async function fixture(t, { hub = new ProfileHub(), shared = false } = {}) {
         try {
           let result = await browser.run(message);
           if (message.tool === 'read_page')
-            result = { ...result, elements: [{ ref: 'e1', label: profile.name }] };
+            result = {
+              ...result,
+              elements: [{ ref: 'e1', label: profile.name }],
+              focus: {
+                token: `k0:${crypto.randomUUID()}`,
+                frameID: 0,
+                editable: true,
+                tag: 'textarea',
+              },
+            };
           socket.send(JSON.stringify({ type: 'result', id: message.id, result }));
         } catch (error) {
           socket.send(JSON.stringify({ type: 'result', id: message.id, error: error.message }));
@@ -97,6 +106,7 @@ test('two opted-in profiles stay connected; conversations select explicitly and 
   assert.equal(second.profileID, personal.id);
   const snapshot = await hub.call('ses_a', 'read_page', {});
   assert.equal(snapshot.elements[0].ref, `p${work.id}:e1`);
+  assert.ok(snapshot.focus.token.startsWith(`p${work.id}:k0:`));
   await assert.rejects(
     hub.call('ses_a', 'close_tab', { tabID: second.tabID }),
     /profileID alongside/,
@@ -180,6 +190,10 @@ test('switching profile rejects old scoped refs, and cannot happen while an acti
     hub.call('ses_a', 'click', { ref: snapshot.elements[0].ref }),
     /different profile/,
   );
+  await assert.rejects(
+    hub.call('ses_a', 'press_key', { focusToken: snapshot.focus.token, key: 'Enter' }),
+    /different profile/,
+  );
   assert.equal(b.chrome.debuggerCalls.length, 0);
   a.socket.removeAllListeners('message');
   await hub.call('ses_a', 'select_profile', { profileID: work.id });
@@ -246,7 +260,7 @@ test('profile selection and scoped refs also traverse the authenticated shared H
   await server.connect(serverTransport);
   await sdk.connect(clientTransport);
   t.after(() => sdk.close());
-  assert.equal((await sdk.listTools()).tools.length, 27);
+  assert.equal((await sdk.listTools()).tools.length, 29);
   const call = async (name, args) => {
     const result = await sdk.callTool({
       name,
@@ -262,6 +276,11 @@ test('profile selection and scoped refs also traverse the authenticated shared H
   await call('open_tab', { url: 'https://example.com' });
   const snapshot = await call('read_page', {});
   await call('type', { ref: snapshot.elements[0].ref, text: 'Coupa' });
+  await call('press_key', { focusToken: snapshot.focus.token, key: 'Control+a' });
+  await call('insert_text', {
+    focusToken: (await call('read_page', {})).focus.token,
+    text: 'Verified text',
+  });
   assert.equal(snapshot.profileID, work.id);
 });
 

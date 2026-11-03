@@ -127,7 +127,7 @@ export function fakeChrome() {
         return { ok: true };
       },
     },
-    windows: { update: async () => {} },
+    windows: { update: async () => {}, get: async (id) => ({ id, focused: true }) },
     action: { setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
     tabGroups: {
       get: async (id) => {
@@ -182,7 +182,8 @@ export function fakeChrome() {
               },
             },
           ];
-        if (request.args?.[0]?.checks) return [{ result: { passed: true } }];
+        if (request.args?.[0] === 'inspect_conditions') return [{ result: { passed: true } }];
+        if (request.args?.[0] === 'keyboard_guard') return [{ result: { valid: true } }];
         if (request.args?.[0]?.selector)
           return [{ result: { ref: 'e1', documentID: `doc-${tab.id}` } }];
         if (request.args?.[0] === 'click')

@@ -10,6 +10,9 @@ export function scopeSnapshot(snapshot, frameID) {
   return {
     ...snapshot,
     frameID,
+    focus: snapshot.focus
+      ? { ...snapshot.focus, frameID, token: `k${frameID}:${snapshot.focus.token}` }
+      : null,
     elements: (snapshot.elements || []).map((element) => ({
       ...element,
       frameID,
@@ -27,8 +30,10 @@ export function combineSnapshots(results) {
     .sort((a, b) => (a.frameId ?? 0) - (b.frameId ?? 0))
     .map((entry) => scopeSnapshot(entry.result, entry.frameId ?? 0));
   const root = snapshots.find((snapshot) => snapshot.frameID === 0);
+  const focused = snapshots.filter((snapshot) => snapshot.focus);
   return {
     ...root,
+    focus: focused.length === 1 ? focused[0].focus : null,
     text: snapshots
       .map((snapshot) =>
         snapshot.frameID === 0

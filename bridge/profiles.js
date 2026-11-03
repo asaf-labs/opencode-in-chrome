@@ -6,6 +6,16 @@ function scopedResult(result, profileID) {
   return {
     ...result,
     profileID,
+    ...(result.focus
+      ? {
+          focus: {
+            ...result.focus,
+            profileID,
+            token:
+              profileID === 'legacy' ? result.focus.token : `p${profileID}:${result.focus.token}`,
+          },
+        }
+      : {}),
     ...(Array.isArray(result.tabs)
       ? { tabs: result.tabs.map((tab) => ({ ...tab, profileID })) }
       : {}),
@@ -221,14 +231,15 @@ export class ProfileHub {
         );
       const input = { ...args };
       delete input.profileID;
-      if (input.ref) {
-        const match = /^p([^:]+):(.+)$/.exec(input.ref);
+      for (const field of ['ref', 'focusToken']) {
+        if (!input[field]) continue;
+        const match = /^p([^:]+):(.+)$/.exec(input[field]);
         if (match) {
           if (match[1] !== id)
             throw new Error(
               'Element ref belongs to a different profile. Select that profile or take a fresh snapshot.',
             );
-          input.ref = match[2];
+          input[field] = match[2];
         } else if (id !== 'legacy')
           throw new Error('Use the complete profile-scoped ref returned by read_page.');
       }

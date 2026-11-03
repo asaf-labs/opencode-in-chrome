@@ -22,6 +22,10 @@ This is one guided setup conversation, not a promise of completely unattended br
 
 The extension [collapses inactive groups after 15 minutes](../README.md#automatic-tab-cleanup). Automatic closing/archiving is **off by default**; installing agents must not enable it without the user's request. The popup's **Archive after (hours)** setting accepts 1–168 whole hours, defaulting to 3; already-enabled legacy profiles retain 24 hours until changed. The popup also offers Keep, Restore, and Delete saved URL controls. Explain that shortening the delay can close already-idle eligible tabs on the next check, archives save profile-local URLs rather than unsaved forms/page state, and browser inactivity is not OpenCode conversation archival. After updating extension code, reload it in each participating Chrome profile; this cleanup feature does not require new permissions or token rotation.
 
+## Keyboard-tool upgrades
+
+The current catalog has 29 tools, including `press_key` and `insert_text`. Updating the checkout alone does not activate them: reload the unpacked extension in each opted-in profile (content version 10), coordinate authorization before stopping a shared daemon with `npm run stop:shared`, then reconnect MCP adapters and verify both tools appear. Adapter reconnection alone does not reload a running daemon. Preserve pairing/profile settings; keyboard support needs no clipboard access. Use the [focus-token workflow](keyboard.md), never a production spreadsheet write as an installation smoke test.
+
 ## Credential handling
 
 - The prompt never asks for a pairing token in chat.

@@ -73,7 +73,7 @@ Each profile is retained for retry if file persistence fails. After retrieving i
 
 ## Activation and tests
 
-Reload the unpacked extension in each opted-in profile and reconnect `chrome` to discover the nine added tools (**27 total** including verified recordings and profile routing). Recording also adds the `offscreen` permission; accept updated permissions if Chrome prompts. In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project and connected profile using that daemon. No configuration, approvals or live bridge are changed by tests.
+Reload the unpacked extension in each opted-in profile and reconnect `chrome` to discover the nine inspection tools (**29 total** including trusted keyboard input, verified recordings and profile routing). Recording also adds the `offscreen` permission; accept updated permissions if Chrome prompts. In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project and connected profile using that daemon. No configuration, approvals or live bridge are changed by tests.
 
 `npm run check` exercises ownership, schema bounds, redaction, navigation/redirects, body opt-in, eviction, cancellation races, shared debugger leases, artifact privacy and MCP output stripping. The isolated real-Chrome regression verifies actual network/console events, uncaught errors, response bodies, CPU samples and performance timeline events:
 

@@ -370,7 +370,7 @@ The original manually connected tabs are released from automation. They remain o
 
 Schemas are defined in [`bridge/tools.js`](bridge/tools.js). In the table, `?` means optional; all other arguments are required. `tabID` is an integer, `ref` is a snapshot string such as `e12`, and `url` must be HTTP/HTTPS.
 
-The server exposes **27 tools**: 12 tab/DOM tools below, 2 profile-routing tools, 4 [verified recording tools](docs/recordings.md), and 9 [inspection tools](docs/inspection.md). `list_profiles({})` lists opted-in connections and the conversation's current selection; `select_profile({"profileID": ID})` explicitly chooses one. Every browser, recording, and inspection tool also accepts optional `profileID`. `open_tab` can explicitly choose/switch a profile; other tools require it to match the existing selection. Include it whenever using an explicit `tabID` or `frameID` with multiple registered profiles. Profile names are data, not instructions or proof of a signed-in account.
+The server exposes **29 tools**: 12 tab/DOM tools below, 2 [trusted keyboard tools](docs/keyboard.md), 2 profile-routing tools, 4 [verified recording tools](docs/recordings.md), and 9 [inspection tools](docs/inspection.md). `list_profiles({})` lists opted-in connections and the conversation's current selection; `select_profile({"profileID": ID})` explicitly chooses one. Every browser, recording, and inspection tool also accepts optional `profileID`. `open_tab` can explicitly choose/switch a profile; other tools require it to match the existing selection. Include it whenever using an explicit `tabID` or `frameID` with multiple registered profiles. Profile names are data, not instructions or proof of a signed-in account.
 
 | Tool         | Arguments                                                 | Result / behavior                                                                                                                                                                             |
 | ------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -395,6 +395,12 @@ Custom controls with standard interactive ARIA roles are included: multiselect/l
 
 For a searchable multiselect, open it, type the query, call `read_page` again, and `click` the matching option's new ref. Use `check` only for native checkbox/radio inputs and `select` only for native `<select>` elements. Verify the filter's trigger/chips or page results after clicking: `ariaSelected` is the raw ARIA state and may describe a command menu's keyboard highlight rather than actual multiselect membership.
 
+### Trusted keyboard input
+
+`press_key({focusToken, key, tabID?})` sends one supported key/chord; `insert_text({focusToken, text, tabID?})` inserts up to 10,000 characters at the focused editable caret/selection. Both accept optional `profileID`. Focus the owned tab, establish the intended control/cell, then call `read_page` and copy its complete single-use `focus.token`. Read again before each command and verify the application result afterward. A missing/null focus is not permission to guess a target.
+
+These tools use trusted Chrome input without reading or writing the clipboard. Literal tabs/newlines are **not guaranteed multi-cell spreadsheet paste**. Dispatch does not prove a selected cell or saved edit; real Google Sheets behavior is not yet verified. See [keyboard workflow, shortcuts, safety and upgrade instructions](docs/keyboard.md).
+
 ### Iframes
 
 By default, `read_page` includes accessible same-origin and cross-origin frames. `frames` lists their IDs, titles, URLs, document IDs, and any reported snapshot errors; the combined `elements` list includes controls from those frames. Within a named profile, main-frame refs use `p<profileID>:e12`; iframe refs use `p<profileID>:f42:e12`. Legacy connections retain `e12`/`f42:e12`. **Pass the entire returned ref unchanged** to `click`, `type`, `select`, or `check`: it identifies the profile, frame, and element.
@@ -414,7 +420,7 @@ Tabs opened by links/popups from an owned tab inherit that session's ownership. 
 - The extension requests optional website access once so created tabs can navigate across sites and screenshots work without a toolbar click on each new tab. No cookie-reading permission is requested.
 - The bridge binds only localhost, authenticates HTTP/WebSocket traffic with the pairing token, and requires session metadata for tools.
 - Pairing storage is restricted to trusted extension contexts. Disable, bridge disconnect, and MCP cancellation invalidate pending work and notify content scripts. Actions already completed cannot be undone.
-- DOM interactions and browser-level clicks work in accessible frames of owned tabs; screenshots capture the main viewport, including visible iframe content. Network/console inspection is explicit and bounded; it does not attach out-of-process child targets. Recording selectors and performance timeline capture are main-frame-only. File uploads and trusted keyboard input are not implemented. Typing, native selection, and checkbox-setting still use DOM APIs; some sites reject those synthetic actions. Chrome internal and other protected pages cannot be scripted.
+- DOM interactions, browser-level clicks and guarded trusted keyboard input work in accessible frames of owned tabs; screenshots capture the main viewport, including visible iframe content. Network/console inspection is explicit and bounded; it does not attach out-of-process child targets. Recording selectors and performance timeline capture are main-frame-only; keyboard tools are not recording-plan actions. File uploads are not implemented. The older `type`, native selection, and checkbox-setting still use DOM APIs; some sites reject those synthetic actions. Chrome internal and other protected pages cannot be scripted.
 
 ## Troubleshooting
 
@@ -464,7 +470,7 @@ npm run check
 
 Tests exercise real MCP discovery/calls over authenticated WebSocket transport, automatic session tab creation, multi-tab operations, cross-session/personal-tab isolation, reconnect persistence, disabling, stale refs, and DOM form interaction. A browser smoke test requires loading the unpacked extension in Chrome.
 
-`CHROME_BINARY=/path/to/chrome npm run test:browser` runs an isolated, headless Chrome regression against a local test page. It proves browser input emits trusted pointer/mouse events where `el.click()` fails, verifies dropdown selection, and checks covered-target rejection. CI runs this on Linux. It uses a temporary profile, not your existing Chrome sessions, and does not test extension permission prompts or HubSpot webhooks.
+`CHROME_BINARY=/path/to/chrome npm run test:browser` runs five isolated, headless Chrome regressions against local fixtures: trusted clicks, nested frames, keyboard/Unicode canvas-editor input, inspection, and verified recording. CI runs these on Linux. They use temporary profiles, not your existing Chrome sessions, and do not test real Google Sheets, extension permission prompts or HubSpot webhooks.
 
 GitHub Actions runs lint, formatting, version consistency, and tests on Windows, macOS, and Linux with Node.js 24. See [CONTRIBUTING.md](CONTRIBUTING.md) for development and smoke-test instructions, [docs/architecture.md](docs/architecture.md) for the implementation, and [CHANGELOG.md](CHANGELOG.md) for updates.
 
