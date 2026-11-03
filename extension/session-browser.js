@@ -2,11 +2,8 @@ import { Recordings } from './recordings.js';
 import { DebuggerSessions } from './debugger-sessions.js';
 import { Inspections } from './inspections.js';
 import { parseFrameRef, scopeSnapshot, combineSnapshots } from './frame-refs.js';
-
-function pageResult(result) {
-  if (typeof result?.opencodeError === 'string') throw new Error(result.opencodeError);
-  return result;
-}
+import { pageResult, runPageTool } from './page-call.js';
+import { TrustedKeyboard } from './keyboard.js';
 
 export class SessionBrowser {
   bindings = {};
@@ -32,6 +29,7 @@ export class SessionBrowser {
     this.chrome = chrome;
     this.publish = publish;
     this.debuggers = new DebuggerSessions(chrome, this);
+    this.keyboard = new TrustedKeyboard(chrome, this);
     this.inspections = new Inspections(chrome, this);
     this.recordings = new Recordings(chrome, this);
   }
@@ -378,6 +376,7 @@ export class SessionBrowser {
     command.executingTabID = tabID;
     const tab = await this.chrome.tabs.get(tabID);
     this.assert(command);
+    if (['press_key', 'insert_text'].includes(command.tool)) return this.keyboard.run(command, tab);
     if (command.tool === 'close_tab') {
       await this.chrome.tabs.remove(tabID);
       await this.remove(tabID);
@@ -485,13 +484,7 @@ export class SessionBrowser {
     }
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID, frameIds: [frameID] },
-      func: async (tool, input) => {
-        try {
-          return await globalThis.__opencodeChrome.run(tool, input);
-        } catch (error) {
-          return { opencodeError: error.message };
-        }
-      },
+      func: runPageTool,
       args: [
         command.tool,
         {
@@ -686,14 +679,8 @@ export class SessionBrowser {
     this.assert(command);
     const results = await this.chrome.scripting.executeScript({
       target: { tabId: tabID },
-      func: async (input) => {
-        try {
-          return await globalThis.__opencodeChrome.run('inspect_conditions', input);
-        } catch (error) {
-          return { opencodeError: error.message };
-        }
-      },
-      args: [{ checks }],
+      func: runPageTool,
+      args: ['inspect_conditions', { checks }],
     });
     this.assert(command);
     return { passed: pageResult(results[0]?.result)?.passed === true };

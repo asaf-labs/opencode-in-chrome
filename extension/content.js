@@ -1,5 +1,5 @@
 (() => {
-  if (globalThis.__opencodeChrome?.version === 9) return;
+  if (globalThis.__opencodeChrome?.version === 10) return;
   globalThis.__opencodeChrome?.dispose?.();
   globalThis.__opencodeChrome?.setEnabled?.(false);
   let refs = new Map(),
@@ -17,10 +17,99 @@
     cursorShown = false,
     controlRevision = 0;
   const cancelledActions = new Set();
+  let focusRevision = 0,
+    focusObservation;
+  const changedFocus = () => {
+    focusRevision++;
+  };
+  document.addEventListener('focusin', changedFocus, true);
+  document.addEventListener('focusout', changedFocus, true);
+  window.addEventListener('blur', changedFocus);
+
+  function focusedElement() {
+    let element = document.activeElement;
+    while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+    return element && !element.matches('iframe,frame') ? element : null;
+  }
+
+  function editable(element) {
+    if (element.closest('[aria-readonly="true"]')) return false;
+    return (
+      element.isContentEditable ||
+      (element.matches('input,textarea') &&
+        !element.readOnly &&
+        ![
+          'checkbox',
+          'radio',
+          'file',
+          'submit',
+          'reset',
+          'button',
+          'hidden',
+          'range',
+          'color',
+          'date',
+          'datetime-local',
+          'month',
+          'week',
+          'time',
+        ].includes(element.type))
+    );
+  }
+
+  function editorState(element) {
+    if (element.type === 'password')
+      return [element.selectionStart, element.selectionEnd, element.selectionDirection];
+    if (element.matches('input,textarea'))
+      return [
+        element.value,
+        element.selectionStart,
+        element.selectionEnd,
+        element.selectionDirection,
+      ];
+    if (element.isContentEditable) {
+      const selection = window.getSelection();
+      return [
+        element.textContent,
+        selection?.anchorNode,
+        selection?.anchorOffset,
+        selection?.focusNode,
+        selection?.focusOffset,
+      ];
+    }
+    return [];
+  }
+
+  function focusSnapshot() {
+    focusObservation = undefined;
+    const element = focusedElement();
+    if (
+      !document.hasFocus() ||
+      !element ||
+      disabled(element) ||
+      element.getRootNode() === controlShadow
+    )
+      return null;
+    focusObservation = {
+      token: crypto.randomUUID(),
+      element,
+      revision: focusRevision,
+      editorState: editorState(element),
+    };
+    return {
+      token: focusObservation.token,
+      tag: element.tagName.toLowerCase(),
+      type: element.type || null,
+      role: element.getAttribute('role'),
+      label: element === document.body ? 'Document' : label(element),
+      editable: editable(element),
+    };
+  }
   function setEnabled(value) {
     if (enabled !== value) controlRevision++;
     enabled = value;
     if (!value) {
+      focusObservation = undefined;
       controlHost?.remove();
       clearTimeout(idleTimer);
       return;
@@ -159,6 +248,7 @@
     'textarea',
     'select',
     'summary',
+    '[tabindex]:not([tabindex="-1"])',
     'label',
     '[contenteditable="true"]',
     ...interactiveRoles.map((role) => `[role~="${role}"]`),
@@ -342,6 +432,31 @@
     if (args.commandID && cancelledActions.has(args.commandID))
       throw new Error('Browser action cancelled before execution.');
     if (!enabled) throw new Error('Browser access is disabled.');
+    if (tool === 'keyboard_guard') {
+      const observed = focusObservation;
+      if (
+        !document.hasFocus() ||
+        args.documentID !== documentID ||
+        snapshotURL !== location.href ||
+        !observed ||
+        observed.token !== args.focusToken ||
+        observed.revision !== focusRevision ||
+        observed.element !== focusedElement() ||
+        !observed.element.isConnected ||
+        disabled(observed.element) ||
+        editorState(observed.element).some(
+          (value, index) => value !== observed.editorState[index],
+        ) ||
+        typeof args.commandID !== 'string' ||
+        (observed.claimedBy && (args.consume || observed.claimedBy !== args.commandID))
+      )
+        throw new Error('Keyboard focus changed or the token expired. Call read_page again.');
+      if (args.requireEditable && !editable(observed.element))
+        throw new Error('Focus an editable control before insert_text, then read_page again.');
+      if (args.consume) observed.claimedBy = args.commandID;
+      activity('Keyboard input');
+      return { valid: true };
+    }
     if (tool === 'resolve_target') {
       const matches = document.querySelectorAll(args.selector);
       if (matches.length !== 1 || !visible(matches[0]))
@@ -441,6 +556,7 @@
         elements,
         totalElements: candidates.length,
         elementsTruncated: candidates.length > elements.length,
+        focus: focusSnapshot(),
         ...frameContext(),
       };
     }
@@ -536,7 +652,7 @@
   };
   globalThis.chrome?.runtime?.onMessage?.addListener(onMessage);
   globalThis.__opencodeChrome = {
-    version: 9,
+    version: 10,
     run,
     validateClick,
     frameContext,
@@ -545,6 +661,9 @@
     setIndicatorHidden,
     dispose: () => {
       setEnabled(false);
+      document.removeEventListener('focusin', changedFocus, true);
+      document.removeEventListener('focusout', changedFocus, true);
+      window.removeEventListener('blur', changedFocus);
       globalThis.chrome?.runtime?.onMessage?.removeListener(onMessage);
     },
   };

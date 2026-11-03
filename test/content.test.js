@@ -468,6 +468,83 @@ test('recording conditions inspect observable state without revealing password v
   );
 });
 
+test('focus tokens are single-use, expire on focus/caret/editor changes, and never expose password values', (t) => {
+  const { run, document } = page(t);
+  document.hasFocus = () => true;
+  const input = document.getElementById('name');
+  input.focus();
+  const snapshot = run('read_page');
+  const guard = (focusToken, extra = {}) =>
+    run('keyboard_guard', {
+      focusToken,
+      documentID: snapshot.documentID,
+      commandID: 'command-1',
+      ...extra,
+    });
+  assert.equal(snapshot.focus.tag, 'input');
+  assert.equal(snapshot.focus.editable, true);
+  assert.equal(guard(snapshot.focus.token, { consume: true }).valid, true);
+  assert.equal(guard(snapshot.focus.token).valid, true);
+  assert.throws(() => guard(snapshot.focus.token, { consume: true }), /token expired/);
+  assert.throws(() => guard(snapshot.focus.token, { commandID: 'command-2' }), /token expired/);
+  const next = run('read_page');
+  input.setSelectionRange(0, 1);
+  assert.throws(() => guard(next.focus.token), /token expired/);
+  const changed = run('read_page');
+  input.value = 'Changed externally';
+  assert.throws(() => guard(changed.focus.token), /token expired/);
+  const beforeBlur = run('read_page');
+  document.getElementById('button').focus();
+  input.focus();
+  assert.throws(() => guard(beforeBlur.focus.token), /token expired/);
+  document.getElementById('secret').focus();
+  const password = run('read_page');
+  assert.equal(password.focus.type, 'password');
+  assert.equal(JSON.stringify(password.focus).includes('private'), false);
+  assert.equal(password.focus.value, undefined);
+});
+
+test('keyboard guards reject disabled/read-only targets, inactive documents, and disable/re-enable', (t) => {
+  const { run, document, window } = page(t);
+  document.hasFocus = () => true;
+  const input = document.getElementById('name');
+  input.focus();
+  const guard = () => {
+    const snapshot = run('read_page');
+    return {
+      documentID: snapshot.documentID,
+      focusToken: snapshot.focus.token,
+      commandID: crypto.randomUUID(),
+    };
+  };
+  const beforeDisable = guard();
+  window.__opencodeChrome.setEnabled(false);
+  window.__opencodeChrome.setEnabled(true);
+  assert.throws(() => run('keyboard_guard', beforeDisable), /token expired/);
+  input.readOnly = true;
+  assert.throws(
+    () => run('keyboard_guard', { ...guard(), requireEditable: true }),
+    /editable control/,
+  );
+  const beforeInactive = guard();
+  input.disabled = true;
+  assert.throws(() => run('keyboard_guard', beforeInactive), /token expired/);
+  assert.equal(run('read_page').focus, null);
+  input.disabled = false;
+  input.focus();
+  input.readOnly = false;
+  input.setAttribute('aria-readonly', 'true');
+  assert.throws(
+    () => run('keyboard_guard', { ...guard(), requireEditable: true }),
+    /editable control/,
+  );
+  input.removeAttribute('aria-readonly');
+  const beforeBlur = guard();
+  document.hasFocus = () => false;
+  assert.throws(() => run('keyboard_guard', beforeBlur), /token expired/);
+  assert.equal(run('read_page').focus, null);
+});
+
 test('recording selectors also resolve anonymous buttons without ephemeral refs', (t) => {
   const { run, document } = page(t);
   const button = document.getElementById('button');

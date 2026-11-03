@@ -3,6 +3,7 @@ import { recordingToolDefinitions } from './recording-tools.js';
 import { saveRecordingArtifacts } from './recording-artifacts.js';
 import { inspectionToolDefinitions } from './inspection-tools.js';
 import { saveInspectionArtifact } from './inspection-artifacts.js';
+import { keyboardToolDefinitions } from './keyboard-tools.js';
 
 function artifactPayload(result) {
   if (!result.profileID) return result;
@@ -89,6 +90,7 @@ function defineBrowserTools() {
     ],
     ['navigate', 'Navigate a session-owned tab to an HTTP or HTTPS URL.', { tabID, url }],
     ['screenshot', 'Capture a session-owned tab’s viewport. This activates the tab.', { tabID }],
+    ...keyboardToolDefinitions(tabID),
     ...recordingToolDefinitions,
     ...inspectionToolDefinitions,
   ];

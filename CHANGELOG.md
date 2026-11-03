@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add guarded trusted `press_key`/`insert_text` tools and profile/frame-scoped single-use focus tokens, without clipboard access or automatic retries. Include a real-Chrome canvas/iframe-editor regression and document spreadsheet verification limits; the catalog now has 29 tools.
+- Require installer dependencies to resolve inside the installation's own `node_modules`, not an ancestor's package cache.
 - Return page action, click/frame guard, recording-condition, and performance-helper exceptions through the normal tool-error path instead of letting them escape as uncaught injected-script errors. Preserve fail-closed checks, input cleanup, and no-retry behavior.
 - Debounce idle debugger detach for 30 seconds after successful ordinary clicks, reusing attachments across action bursts to reduce Chrome-banner flicker. Preserve immediate safety cleanup and explicit recording/inspection stop, with ownership/generation checks and stale-timer guards.
 - Integrate inspection/recordings with profile-aware routing, iframe actions, quiet activity indicators, and configurable cleanup; export profile-tagged artifact summaries without raw payloads and exclude retained captures from idle cleanup.

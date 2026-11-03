@@ -141,6 +141,21 @@ async function fixture() {
   };
 }
 
+test('frame snapshots scope focus tokens and never guess across ambiguous focus', () => {
+  const root = { frameId: 0, result: { documentID: 'root', elements: [], focus: null } };
+  const child = {
+    frameId: 7,
+    result: { documentID: 'child', elements: [], focus: { token: 'observed' } },
+  };
+  assert.equal(combineSnapshots([root, child]).focus.token, 'k7:observed');
+  assert.equal(combineSnapshots([root, child]).focus.frameID, 7);
+  assert.equal(
+    combineSnapshots([{ ...root, result: { ...root.result, focus: { token: 'root' } } }, child])
+      .focus,
+    null,
+  );
+});
+
 test('iframe actions route scoped refs only into their observed owned frame', async () => {
   const { browser, command, tab } = await fixture();
   const typed = await browser.run(command('type', { ref: 'f7:e1', text: 'Coupa' }));
