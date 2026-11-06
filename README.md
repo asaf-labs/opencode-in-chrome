@@ -1,18 +1,43 @@
-# OpenCode in Chrome — session-owned browser tabs
+# OpenCode in Chrome — Chrome MCP server for browser automation
 
 [![CI](https://github.com/asaf-labs/opencode-in-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/asaf-labs/opencode-in-chrome/actions/workflows/ci.yml)
 
-A Manifest V3 Chrome extension and local MCP bridge. Once paired and enabled, an OpenCode conversation can create and control its own tabs automatically. The extension has a small setup popup; the conversation stays in OpenCode.
+**OpenCode in Chrome** is a Chrome extension and local **Model Context Protocol (MCP) server for OpenCode**. Give your AI agent browser automation in your regular Chrome profile, with existing logins, session-owned tabs, and explicit multi-profile selection. Once paired and enabled, each OpenCode conversation can open and control its own tabs; the conversation stays in OpenCode.
+
+[Install from source](#install-from-source-available-now) · [Guided setup prompt](#install-from-an-opencode-chat) · [Example workflow](#example-browser-automation-workflow) · [MCP tools](#tools) · [Security](SECURITY.md)
+
+## Why use this Chrome MCP server?
+
+- **Use existing logins.** New agent tabs use the Chrome profile you explicitly select. Cookies stay in Chrome; you do not need a separate headless-browser login for each task.
+- **Keep conversations' tabs separate.** Agents control session-owned tabs, not your unrelated personal tabs. Chrome tab groups and an agent cursor show where automation is happening.
+- **Choose the right account.** Opt in each Chrome profile once, then explicitly select the profile for each conversation. Disconnected or disabled profiles never fall back to another account.
+- **Inspect and verify.** Read pages and accessible iframes, click controls, use guarded keyboard input, capture screenshots, inspect network/console activity, and export verified task walkthroughs.
+
+The bridge runs locally with authenticated transport. Tab ownership is a targeting boundary, **not an account sandbox**: signed-in websites still have your account's permissions, browser actions need appropriate approval, and page data returned by tools can reach your model provider. Read the [security model](SECURITY.md) before using private accounts.
 
 ```text
 OpenCode sessions → MCP stdio adapters → shared localhost bridge → extension → session-owned Chrome tabs
 ```
 
-New tabs use your normal Chrome profile and its existing logins. Cookies stay in Chrome.
-
 ![Illustration of an orange session-owned tab group and independent OpenCode cursor](docs/assets/control-preview.svg)
 
 _UI illustration, not a captured browser screenshot._
+
+## Example browser automation workflow
+
+After [setup](#install-from-source-available-now), try this read-only task in an OpenCode conversation:
+
+```text
+Use the Chrome MCP tools to open https://opencode.ai/v2/docs/ in a new
+session-owned tab. If I have multiple Chrome profiles, ask which to use.
+Find the MCP server setup documentation, summarize it, and include the source
+URL. Do not change account settings, submit forms, or use my personal tabs.
+Close only the tab you created when finished.
+```
+
+The workflow is **select profile → open an owned tab → read the page → follow snapshot refs → verify the result**. See the [agent quick start](#agent-quick-start) for tool-call examples. To capture an actual browser task as a shareable WebM, use the [verified recording workflow](docs/recordings.md); review it for private information before sharing.
+
+[Install from source today](#install-from-source-available-now). The npm commands below still require package publication.
 
 ## Install from an OpenCode chat
 
