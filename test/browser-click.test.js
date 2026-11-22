@@ -42,6 +42,97 @@ document.getElementById('coupa').addEventListener('click', event => {
 </script>`;
 
 test(
+  'real Chrome renders a curved visual cursor without mouse events and respects reduced motion',
+  {
+    skip: !process.env.CHROME_BINARY && 'Set CHROME_BINARY for the isolated cursor regression.',
+    timeout: 30000,
+  },
+  async (t) => {
+    const server = createServer((_req, res) =>
+      res.writeHead(200, { 'Content-Type': 'text/html' }).end(html),
+    );
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(
+      () =>
+        new Promise((resolve) => {
+          server.closeAllConnections();
+          server.close(resolve);
+        }),
+    );
+    const cdp = await startTestBrowser(t);
+    const contextID = await cdp.navigate(`http://127.0.0.1:${server.address().port}`);
+    await cdp.evaluate(content, contextID);
+    const observed = await cdp.evaluate(
+      `(() => {
+    const api = globalThis.__opencodeChrome;
+    const cursor = document.getElementById('opencode-agent-overlay').shadowRoot.querySelector('.cursor');
+    const start = cursor.getBoundingClientRect();
+    let mouseEvents = 0;
+    for (const name of ['mousemove', 'pointermove', 'click']) document.addEventListener(name, () => mouseEvents++);
+    api.run('scroll', { deltaY: 100 });
+    const animation = cursor.getAnimations().find(a => a.effect.getKeyframes().some(frame => frame.transform));
+    animation.pause();
+    animation.currentTime = 120;
+    const middle = cursor.getBoundingClientRect();
+    const frames = animation.effect.getKeyframes();
+    const duration = animation.effect.getTiming().duration;
+    animation.currentTime = duration;
+    const end = cursor.getBoundingClientRect();
+    animation.currentTime = 120;
+    const beforeRetarget = cursor.getBoundingClientRect();
+    api.run('scroll', { deltaY: -100 });
+    const next = cursor.getAnimations().find(a => a.effect.getKeyframes().some(frame => frame.transform));
+    next.pause();
+    next.currentTime = 0;
+    const retargetStart = cursor.getBoundingClientRect();
+    next.currentTime = 240;
+    const nextEnd = cursor.getBoundingClientRect();
+    const oldState = animation.playState;
+    api.setEnabled(false);
+    return {
+      start: {x: start.left, y: start.top}, middle: {x: middle.left, y: middle.top},
+      end: {x: end.left, y: end.top}, beforeRetarget: {x: beforeRetarget.left, y: beforeRetarget.top},
+      retargetStart: {x: retargetStart.left, y: retargetStart.top},
+      nextEnd: {x: nextEnd.left, y: nextEnd.top},
+      expected: {x: innerWidth/2, y: innerHeight*.75}, expectedNext: {x: innerWidth/2, y: innerHeight*.25},
+      frames: frames.length, duration, oldState, cancelledState: next.playState, mouseEvents
+    };
+  })()`,
+      contextID,
+    );
+    assert.ok(observed.frames > 3);
+    assert.equal(observed.duration, 240);
+    assert.ok(Math.abs(observed.middle.x - observed.start.x) > 5);
+    for (const key of ['x', 'y']) {
+      assert.ok(Math.abs(observed.end[key] - observed.expected[key]) < 0.1);
+      assert.ok(Math.abs(observed.retargetStart[key] - observed.beforeRetarget[key]) < 0.1);
+      assert.ok(Math.abs(observed.nextEnd[key] - observed.expectedNext[key]) < 0.1);
+    }
+    assert.equal(observed.oldState, 'idle');
+    assert.equal(observed.cancelledState, 'idle');
+    assert.equal(observed.mouseEvents, 0);
+    await cdp.command('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+    const reduced = await cdp.evaluate(
+      `(() => {
+    globalThis.__opencodeChrome.setEnabled(true);
+    globalThis.__opencodeChrome.run('scroll', {deltaY:100});
+    const cursor = document.getElementById('opencode-agent-overlay').shadowRoot.querySelector('.cursor');
+    const rect = cursor.getBoundingClientRect();
+    return { motions: cursor.getAnimations().filter(a => a.effect.getKeyframes().some(frame => frame.transform)).length,
+      position: {x: rect.left, y: rect.top}, expected: {x: innerWidth/2, y: innerHeight*.75} };
+  })()`,
+      contextID,
+    );
+    assert.equal(reduced.motions, 0);
+    for (const key of ['x', 'y'])
+      assert.ok(Math.abs(reduced.position[key] - reduced.expected[key]) < 0.1);
+  },
+);
+
+test(
   'real Chrome click dispatch satisfies trusted pointer handlers and refuses covered targets',
   {
     skip:
