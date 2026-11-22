@@ -288,6 +288,155 @@ test('agent cursor highlights a target without following the user mouse or pollu
   assert.match(host.shadowRoot.querySelector('.status').textContent, /Clicking/);
 });
 
+function cursorAnimations(window, cursor) {
+  const calls = [];
+  cursor.animate = (frames, options) => {
+    const animation = {
+      cancelled: false,
+      finished: new Promise(() => {}),
+      cancel() {
+        this.cancelled = true;
+      },
+    };
+    calls.push({ frames, options, animation });
+    return animation;
+  };
+  window.scrollBy = () => {};
+  return calls;
+}
+
+function cursorPoint(transform) {
+  const coordinates = /translate3d\(([^,]+),([^,]+),/.exec(transform);
+  assert.ok(coordinates, transform);
+  return { x: parseFloat(coordinates[1]), y: parseFloat(coordinates[2]) };
+}
+
+test('visual cursor follows a bounded spatial curve with fixed timing and exact endpoints', (t) => {
+  const { run, document, window } = page(t);
+  const cursor = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  cursor.getBoundingClientRect = () => ({ left: 100, top: 100 });
+  const calls = cursorAnimations(window, cursor);
+  run('scroll', { deltaY: 100 });
+  assert.equal(calls.length, 1);
+  const { frames, options } = calls[0];
+  assert.equal(options.duration, 240);
+  assert.equal(options.easing, 'linear');
+  const points = frames.map((frame) => cursorPoint(frame.transform));
+  assert.ok(points.length > 3);
+  assert.deepEqual(points[0], { x: 100, y: 100 });
+  const end = { x: window.innerWidth / 2, y: window.innerHeight * 0.75 };
+  assert.deepEqual(points.at(-1), end);
+  assert.deepEqual(cursorPoint(cursor.style.transform), end);
+  assert.ok(
+    points.some(
+      (point) => Math.abs((point.x - 100) * (end.y - 100) - (point.y - 100) * (end.x - 100)) > 1,
+    ),
+  );
+  assert.ok(
+    points.every(
+      (point) =>
+        point.x >= 4 &&
+        point.x <= window.innerWidth - 32 &&
+        point.y >= 4 &&
+        point.y <= window.innerHeight - 38,
+    ),
+  );
+  const step = (index) =>
+    Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
+  assert.ok(step(1) < step(Math.floor(points.length / 2)));
+  assert.ok(step(points.length - 1) < step(Math.floor(points.length / 2)));
+});
+
+test('retargeting starts at the rendered cursor position and retires the previous animation', (t) => {
+  const { run, document, window } = page(t);
+  const cursor = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  const calls = cursorAnimations(window, cursor);
+  run('scroll', { deltaY: 100 });
+  cursor.getBoundingClientRect = () => ({ left: 250, top: 400 });
+  run('scroll', { deltaY: -100 });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].animation.cancelled, true);
+  assert.deepEqual(cursorPoint(calls[1].frames[0].transform), { x: 250, y: 400 });
+  const end = cursor.style.transform;
+  calls[0].animation.onfinish?.();
+  assert.equal(cursor.style.transform, end);
+  window.__opencodeChrome.setEnabled(false);
+  assert.equal(calls[1].animation.cancelled, true);
+});
+
+test('cursor curves stay in the viewport after resize and near its edges', (t) => {
+  const { run, document, window } = page(t);
+  Object.defineProperty(window, 'innerWidth', { value: 120 });
+  Object.defineProperty(window, 'innerHeight', { value: 90 });
+  const cursor = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  cursor.getBoundingClientRect = () => ({ left: -100, top: 500 });
+  const calls = cursorAnimations(window, cursor);
+  run('scroll', { deltaY: 100 });
+  const points = calls[0].frames.map((frame) => cursorPoint(frame.transform));
+  assert.ok(
+    points.every((point) => point.x >= 4 && point.x <= 88 && point.y >= 4 && point.y <= 52),
+  );
+  assert.deepEqual(points.at(-1), { x: 60, y: 52 });
+});
+
+test('cursor motion stops at idle, disable and disposal without changing indicator hiding', (t) => {
+  const { run, document, window } = page(t);
+  const api = window.__opencodeChrome;
+  const cursor = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  const calls = cursorAnimations(window, cursor);
+  let idle;
+  const timeout = window.setTimeout.bind(window);
+  window.setTimeout = (callback, ms) =>
+    ms === 1800 ? ((idle = callback), 0) : timeout(callback, ms);
+  run('scroll', { deltaY: 100 });
+  api.setIndicatorHidden(true);
+  assert.equal(calls[0].animation.cancelled, false);
+  idle();
+  assert.equal(calls[0].animation.cancelled, true);
+  assert.equal(cursor.style.opacity, '0');
+  run('scroll', { deltaY: -100 });
+  api.setEnabled(false);
+  assert.equal(calls[1].animation.cancelled, true);
+  api.setEnabled(true);
+  const next = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  const after = cursorAnimations(window, next);
+  run('scroll', { deltaY: 100 });
+  api.dispose();
+  assert.equal(after[0].animation.cancelled, true);
+});
+
+test('reduced motion and unavailable or failing animation APIs snap the visual cursor safely', (t) => {
+  const { run, document, window } = page(t);
+  const cursor = document
+    .getElementById('opencode-agent-overlay')
+    .shadowRoot.querySelector('.cursor');
+  const calls = cursorAnimations(window, cursor);
+  window.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+  assert.doesNotThrow(() => run('scroll', { deltaY: 100 }));
+  assert.equal(calls.length, 0);
+  assert.deepEqual(cursorPoint(cursor.style.transform), {
+    x: window.innerWidth / 2,
+    y: window.innerHeight * 0.75,
+  });
+  window.matchMedia = () => ({ matches: false });
+  delete cursor.animate;
+  assert.doesNotThrow(() => run('scroll', { deltaY: -100 }));
+  cursor.animate = () => {
+    throw new Error('Animation unavailable');
+  };
+  assert.doesNotThrow(() => run('scroll', { deltaY: 100 }));
+});
+
 test('activity dot starts hidden, expands on click, can be hidden without disabling actions, and fades at idle', async (t) => {
   const messages = [];
   const { run, document, window } = page(t, {

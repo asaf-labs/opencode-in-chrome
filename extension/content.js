@@ -1,6 +1,6 @@
 (() => {
   if (
-    globalThis.__opencodeChrome?.version === 10 &&
+    globalThis.__opencodeChrome?.version === 11 &&
     globalThis.__opencodeChrome.runtimeRevision === globalThis.__opencodeChromeRevision
   )
     return;
@@ -20,6 +20,9 @@
   let enabled = true,
     cursorShown = false,
     controlRevision = 0;
+  let cursorX = 0,
+    cursorY = 0,
+    cursorMotion;
   const cancelledActions = new Set();
   let focusRevision = 0,
     focusObservation;
@@ -113,12 +116,14 @@
     if (enabled !== value) controlRevision++;
     enabled = value;
     if (!value) {
+      stopCursorMotion();
       focusObservation = undefined;
       controlHost?.remove();
       clearTimeout(idleTimer);
       return;
     }
     if (controlHost?.isConnected) return;
+    stopCursorMotion();
     controlHost = document.createElement('div');
     controlHost.id = 'opencode-agent-overlay';
     controlHost.style.cssText =
@@ -139,7 +144,7 @@
         .panel button { display:block; margin-top:8px; padding:4px 8px; border-radius:5px; }
         .dot { width:8px; height:8px; border-radius:50%; background:#fb923c; box-shadow:0 0 0 4px #fb923c25; }
         .cursor { position:fixed; top:0; left:0; opacity:0; transform:translate3d(50vw,50vh,0);
-          transition:transform 240ms cubic-bezier(.2,.75,.25,1),opacity 150ms; filter:drop-shadow(0 2px 3px #0005); }
+          transition:opacity 150ms; filter:drop-shadow(0 2px 3px #0005); }
         .cursor svg { display:block; width:28px; height:34px; overflow:visible; }
         .cursor-label { position:absolute; top:29px; left:19px; padding:3px 7px; border-radius:5px;
           color:#fff; background:#c2410c; font:600 11px/1.2 system-ui,sans-serif; white-space:nowrap; }
@@ -178,6 +183,79 @@
     };
     document.documentElement.append(controlHost);
     cursorShown = false;
+    cursorX = innerWidth / 2;
+    cursorY = innerHeight / 2;
+  }
+  function stopCursorMotion() {
+    const motion = cursorMotion;
+    cursorMotion = undefined;
+    try {
+      motion?.cancel();
+    } catch {}
+  }
+  function easeCursor(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - (2 - 2 * t) ** 3 / 2;
+  }
+  function bezierPoint([p0, p1, p2, p3], t) {
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+    };
+  }
+  function cursorPosition() {
+    try {
+      const rect = cursor.getBoundingClientRect();
+      if (Number.isFinite(rect.left) && Number.isFinite(rect.top))
+        return cursorPoint(rect.left, rect.top);
+    } catch {}
+    return cursorPoint(cursorX, cursorY);
+  }
+  function cursorPoint(x, y) {
+    return {
+      x: Math.max(4, Math.min(Math.max(4, innerWidth - 32), x)),
+      y: Math.max(4, Math.min(Math.max(4, innerHeight - 38), y)),
+    };
+  }
+  function moveCursor(x, y) {
+    ({ x, y } = cursorPoint(x, y));
+    const from = cursorPosition();
+    stopCursorMotion();
+    cursorX = x;
+    cursorY = y;
+    cursor.style.transform = `translate3d(${x}px,${y}px,0)`;
+    const dx = x - from.x,
+      dy = y - from.y,
+      distance = Math.hypot(dx, dy);
+    if (
+      distance < 1 ||
+      typeof cursor.animate !== 'function' ||
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    )
+      return;
+    const bend = Math.min(80, distance * 0.2);
+    const control = (share) =>
+      cursorPoint(
+        from.x + dx * share - (dy / distance) * bend,
+        from.y + dy * share + (dx / distance) * bend,
+      );
+    const points = [from, control(0.3), control(0.7), { x, y }];
+    const duration = 240;
+    try {
+      const keyframes = [];
+      for (let i = 0; i <= 24; i++) {
+        const sampled = bezierPoint(points, easeCursor(i / 24));
+        const point = cursorPoint(sampled.x, sampled.y);
+        keyframes.push({ transform: `translate3d(${point.x}px,${point.y}px,0)` });
+      }
+      const animation = cursor.animate(keyframes, { duration, easing: 'linear' });
+      cursorMotion = animation;
+      animation.onfinish = () => {
+        if (cursorMotion === animation) cursorMotion = undefined;
+      };
+    } catch {
+      cursorMotion = undefined;
+    }
   }
   function activity(label) {
     if (!enabled) return;
@@ -195,6 +273,7 @@
       target.style.opacity = '0';
       cursor.style.opacity = '0';
       cursorShown = false;
+      stopCursorMotion();
     }, delay);
   }
   async function pointAt(element, label, commandID) {
@@ -208,7 +287,7 @@
       cursor.style.opacity = '1';
       cursorShown = true;
     }
-    cursor.style.transform = `translate3d(${x}px,${y}px,0)`;
+    moveCursor(x, y);
     Object.assign(target.style, {
       left: `${rect.left - 3}px`,
       top: `${rect.top - 3}px`,
@@ -570,7 +649,7 @@
       activity('Scrolling');
       cursor.style.opacity = '1';
       cursorShown = true;
-      cursor.style.transform = `translate3d(${innerWidth / 2}px,${args.deltaY >= 0 ? innerHeight * 0.75 : innerHeight * 0.25}px,0)`;
+      moveCursor(innerWidth / 2, args.deltaY >= 0 ? innerHeight * 0.75 : innerHeight * 0.25);
       window.scrollBy({ top: args.deltaY, behavior: 'instant' });
       return { scrollY: window.scrollY };
     }
@@ -656,7 +735,7 @@
   };
   globalThis.chrome?.runtime?.onMessage?.addListener(onMessage);
   globalThis.__opencodeChrome = {
-    version: 10,
+    version: 11,
     runtimeRevision: globalThis.__opencodeChromeRevision,
     run,
     validateClick,
