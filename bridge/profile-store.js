@@ -1,5 +1,5 @@
-import { readFile, mkdir, writeFile, rename, rm } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+export { writePrivateJSON as writeProfileState } from './private-store.js';
 
 export const profileIDPattern =
   /^(?:legacy|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
@@ -44,6 +44,7 @@ export async function readProfileState(url) {
     )
       throw new Error();
     for (const profile of state.profiles) {
+      if (profile.enabled !== undefined && typeof profile.enabled !== 'boolean') throw new Error();
       if (profile.id === 'legacy') {
         if (profile.name !== 'Legacy Chrome profile') throw new Error();
       } else if (validateProfile(profile).id !== profile.id) throw new Error();
@@ -58,17 +59,5 @@ export async function readProfileState(url) {
     throw new Error(
       'Invalid saved profile routing. Restore .local/profile-routing.json privately; browser routing was not reset.',
     );
-  }
-}
-
-export async function writeProfileState(url, state) {
-  if (!url) return;
-  await mkdir(new URL('./', url), { recursive: true, mode: 0o700 });
-  const temporary = new URL(`.profile-routing-${randomUUID()}.tmp`, url);
-  try {
-    await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await rename(temporary, url);
-  } finally {
-    await rm(temporary, { force: true });
   }
 }

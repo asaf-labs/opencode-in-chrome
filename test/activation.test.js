@@ -341,7 +341,7 @@ test(
         stderr: 'pipe',
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 29);
+    assert.equal((await client.listTools()).tools.length, 30);
     const tools = path.join(root, 'bridge/tools.js');
     await writeFile(
       tools,
@@ -350,7 +350,7 @@ test(
         "const definitions = [ ['update_probe', 'Disposable upgrade fixture', {}],",
       ),
     );
-    assert.equal((await client.listTools()).tools.length, 30);
+    assert.equal((await client.listTools()).tools.length, 31);
     assert.equal(notifications, 1);
     assert.equal(await readFile(configURL, 'utf8'), before);
   },

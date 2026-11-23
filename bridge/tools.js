@@ -105,6 +105,11 @@ function defineBrowserTools() {
       'Explicitly pin this conversation to a profile ID from list_profiles. This choice survives daemon restarts; disconnected/disabled profiles never fall back to a different account. Switching does not move or adopt tabs. Wait for current browser actions to finish before switching.',
       { profileID: profileID.unwrap() },
     ],
+    [
+      'connect_profile',
+      'Connect an explicitly chosen registered Chrome profile without changing this conversation’s selected account. If already connected and enabled, return immediately. Otherwise wait briefly for reconnection, then open only its approved local Chrome profile mapping and wait for its authenticated extension identity. Launching requires one-time npm run profile:map setup and a previously confirmed enabled profile. Never enables disabled profiles, adopts personal tabs, restarts a healthy bridge, changes pairing or replays browser actions. This may open a Chrome window; ask before opening an account/profile the user did not request.',
+      { profileID: profileID.unwrap() },
+    ],
     ...definitions.map(([name, description, schema]) => [
       name,
       description,

@@ -1,5 +1,6 @@
 import { BrowserHub } from './hub.js';
 import { validateProfile, readProfileState, writeProfileState } from './profile-store.js';
+import { ProfileConnector } from './profile-connector.js';
 
 function scopedResult(result, profileID) {
   if (!result || typeof result !== 'object') return result;
@@ -43,8 +44,19 @@ export class ProfileHub {
   constructor({ state = { profiles: [], selections: {} }, save = async () => {} } = {}) {
     this.save = save;
     for (const profile of state.profiles)
-      this.profiles.set(profile.id, { ...profile, hub: new BrowserHub() });
+      this.profiles.set(profile.id, { ...profile, hub: this.browserHub(profile.id) });
     this.selections = new Map(Object.entries(state.selections));
+  }
+
+  browserHub(id) {
+    return new BrowserHub({
+      onAvailability: (enabled) => {
+        const profile = this.profiles.get(id);
+        if (!profile) return;
+        profile.enabled = enabled;
+        void this.persist().catch(() => {});
+      },
+    });
   }
 
   get socket() {
@@ -86,7 +98,11 @@ export class ProfileHub {
   state() {
     return {
       version: 1,
-      profiles: [...this.profiles.values()].map(({ id, name }) => ({ id, name })),
+      profiles: [...this.profiles.values()].map(({ id, name, enabled }) => ({
+        id,
+        name,
+        ...(typeof enabled === 'boolean' ? { enabled } : {}),
+      })),
       selections: Object.fromEntries(this.selections),
     };
   }
@@ -124,10 +140,11 @@ export class ProfileHub {
       throw error;
     }
     if (!entry) {
-      entry = { ...profile, hub: new BrowserHub() };
+      entry = { ...profile, hub: this.browserHub(profile.id) };
       this.profiles.set(profile.id, entry);
     }
     entry.name = profile.name;
+    entry.enabled = enabled === true;
     entry.hub.attach(socket, enabled, protocol);
     // Calls wait for durable routing. An attach must not create an unhandled rejection.
     void this.persist().catch(() => {});
@@ -140,6 +157,7 @@ export class ProfileHub {
       name: profile.name,
       connected: profile.hub.socket?.readyState === 1,
       enabled: profile.hub.socket?.readyState === 1 && profile.hub.browserEnabled,
+      lastKnownEnabled: profile.enabled ?? null,
       protocol: profile.hub.extensionProtocol,
       legacy: profile.id === 'legacy',
       updateSupport: profile.hub.updateSupport === true,
@@ -161,6 +179,25 @@ export class ProfileHub {
         selectedProfileID: this.selections.get(sessionID) ?? null,
         routingHealthy: !this.persistenceError,
       };
+    if (tool === 'connect_profile') {
+      const id = args.profileID;
+      if (!this.profiles.has(id) || id === 'legacy')
+        throw new Error('Use a named registered profile ID from list_profiles.');
+      if (!this.connector) throw new Error('Profile launching is not configured for this bridge.');
+      this.inFlight.set(sessionID, (this.inFlight.get(sessionID) || 0) + 1);
+      try {
+        const result = await this.connector.connect(id, signal);
+        return {
+          ...this.profilesSnapshot().find((profile) => profile.profileID === id),
+          ...result,
+          selectedProfileID: this.selections.get(sessionID) ?? null,
+        };
+      } finally {
+        const count = (this.inFlight.get(sessionID) || 1) - 1;
+        if (count) this.inFlight.set(sessionID, count);
+        else this.inFlight.delete(sessionID);
+      }
+    }
     const active = this.inFlight.get(sessionID) || 0;
     let id = this.selections.get(sessionID);
     const requested = args.profileID;
@@ -255,8 +292,12 @@ export class ProfileHub {
 }
 
 export async function createProfileHub(url) {
-  return new ProfileHub({
+  const hub = new ProfileHub({
     state: await readProfileState(url),
     save: (state) => writeProfileState(url, state),
   });
+  hub.connector = new ProfileConnector(hub, {
+    mappingURL: url ? new URL('./profile-launchers.json', url) : undefined,
+  });
+  return hub;
 }
