@@ -73,7 +73,7 @@ Each profile is retained for retry if file persistence fails. After retrieving i
 
 ## Activation and tests
 
-Reload the unpacked extension in each opted-in profile and reconnect `chrome` to discover the nine inspection tools (**29 total** including trusted keyboard input, verified recordings and profile routing). Recording also adds the `offscreen` permission; accept updated permissions if Chrome prompts. In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project and connected profile using that daemon. No configuration, approvals or live bridge are changed by tests.
+Reload the unpacked extension in each opted-in profile and reconnect `chrome` to discover the nine inspection tools (**30 total** including profile connection, trusted keyboard input, verified recordings and profile routing). Recording also adds the `offscreen` permission; accept updated permissions if Chrome prompts. In global shared mode, coordinate `npm run stop:shared` from the installation directory before reconnecting; adapter reconnection alone does not reload the running daemon. This affects every project and connected profile using that daemon. No configuration, approvals or live bridge are changed by tests.
 
 After [one-time automatic-update setup](updates.md), subsequent local shared-mode updates activate on next use only when all profiles are idle. Retained inspection/recording state blocks activation until stopped/exported/cancelled normally; it is never discarded just to update. The manual procedure remains the fallback for bootstrap, missing permissions and incompatible clients.
 

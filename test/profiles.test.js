@@ -260,7 +260,7 @@ test('profile selection and scoped refs also traverse the authenticated shared H
   await server.connect(serverTransport);
   await sdk.connect(clientTransport);
   t.after(() => sdk.close());
-  assert.equal((await sdk.listTools()).tools.length, 29);
+  assert.equal((await sdk.listTools()).tools.length, 30);
   const call = async (name, args) => {
     const result = await sdk.callTool({
       name,

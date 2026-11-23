@@ -23,6 +23,10 @@ export class BrowserHub {
   activity = [];
   maintenance = new Map();
 
+  constructor({ onAvailability = () => {} } = {}) {
+    this.onAvailability = onAvailability;
+  }
+
   attach(socket, enabled = false, protocol = 1) {
     if (this.socket) this.socket.close(4001, 'Replaced connection');
     this.reset('Browser connection replaced');
@@ -83,6 +87,7 @@ export class BrowserHub {
     }
     if (message.type === 'availability') {
       this.browserEnabled = message.enabled === true;
+      this.onAvailability(this.browserEnabled);
       if (!this.browserEnabled)
         for (const sessionID of this.bindings.keys())
           this.cancel(sessionID, 'Browser access disabled');

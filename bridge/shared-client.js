@@ -10,7 +10,10 @@ export class SharedBrowserHub {
     if (!/^ses[\w-]+$/.test(sessionID || ''))
       throw new Error('This tool requires OpenCode session metadata.');
     if (signal?.aborted) throw new Error('Browser action cancelled');
-    await ensureSharedDaemon(this.config, this.options);
+    await ensureSharedDaemon(this.config, {
+      ...this.options,
+      ...(tool === 'connect_profile' ? { autoActivate: false } : {}),
+    });
     if (signal?.aborted) throw new Error('Browser action cancelled');
     let response;
     try {
