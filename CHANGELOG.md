@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Label tab groups with the conversation title and working/idle icons, without the OpenCode prefix. Preserve saved titles and group collapse state; fall back to a short session ID when title lookup is unavailable.
+
 - Add explicit `connect_profile` (30 tools total) with local-only Chrome launch approval, bounded authenticated reconnection, shared attempts and no account switching, automatic enable, healthy-bridge restart or browser-action replay. Persist last confirmed enabled state; unknown/disabled profiles fail closed. Add `npm run profile:map` for one-time mapping setup without reading Chrome account data.
 - Animate the visual orange cursor along bounded cubic Bézier curves with a 240 ms ease-in/out glide, interruption cleanup and reduced-motion snapping. Keep actual input coordinates, dispatch timing and safety guards unchanged; bump content version to 11.
 - Activate installed local updates on next shared-mode tool use with runtime fingerprints, a fresh adapter subprocess/catalog notification, an all-profile idle barrier and coordinated daemon/extension reload. Preserve ownership using expiring native-target checkpoints; never replay browser actions, interrupt retained captures or fetch updates automatically. Existing versions require one manual bootstrap.

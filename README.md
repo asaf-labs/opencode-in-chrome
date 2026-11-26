@@ -177,6 +177,10 @@ Browser results identify `profileID`. Include that ID alongside explicit numeric
 
 **Upgrade:** restart the updated bridge, reload the extension in each participating Chrome profile, name/enable it, and reconnect MCP adapters to load `list_profiles`/`select_profile`. An older extension is shown as **Legacy Chrome profile** and remains usable as a single compatibility connection, but it cannot distinguish multiple old profile copies; upgrade those copies. Existing conversations pinned to a legacy/disconnected identity must explicitly select the new profile. Do not clone profile-local extension storage: simultaneous duplicate identities are rejected rather than replacing a working connection. A fresh extension installation creates a new identity and requires pairing/selection again.
 
+### Tab group labels
+
+Owned tab groups use the conversation title: **🟠 Fix invoice upload** while browser commands are queued/running, and **⚪ Fix invoice upload** when idle or disabled. This tracks browser work, not the agent's reasoning or other tools. Titles refresh on `open_tab` and `list_tabs` through a cached, read-only OpenCode CLI lookup; if unavailable, the saved title or short session ID is used. Label updates preserve collapsed groups.
+
 ### Reconnect an offline profile
 
 Use `connect_profile({"profileID": ID_FROM_LIST})` to wait for reconnection or open that profile through an explicit local Chrome launch mapping. Set up the mapping once with `npm run profile:map`; see [profile connection setup](docs/profile-connections.md). An already connected/enabled profile needs no mapping. Disabled or unconfirmed profiles are not launched, and this tool never changes the selected account, adopts tabs or restarts a healthy bridge.
