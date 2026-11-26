@@ -13,6 +13,21 @@ export class SessionBrowser {
   clickingTabs = new Set();
   groupWork = new Map();
   sessionWork = new Map();
+  working = new Map();
+
+  groupTitle(sessionID) {
+    const title = this.bindings[sessionID]?.sessionTitle || sessionID.slice(-6);
+    return `${this.enabled && this.working.get(sessionID) ? '🟠' : '⚪'} ${title}`;
+  }
+
+  async refreshGroupTitle(sessionID) {
+    // Update labels only: never regroup tabs or change their collapsed state.
+    for (const groupID of Object.values(this.bindings[sessionID]?.groups || {})) {
+      await this.chrome.tabGroups
+        .update(groupID, { title: this.groupTitle(sessionID) })
+        .catch(() => {});
+    }
+  }
 
   serial(map, key, work) {
     const next = (map.get(key) || Promise.resolve()).catch(() => {}).then(work);
@@ -137,7 +152,7 @@ export class SessionBrowser {
           await this.chrome.tabs.group({ tabIds: [other.id], groupId: groupID });
       }
       await this.chrome.tabGroups.update(groupID, {
-        title: `OpenCode · ${sessionID.slice(-6)}${this.enabled ? '' : ' · disabled'}`,
+        title: this.groupTitle(sessionID),
         color: this.enabled ? 'orange' : 'grey',
       });
       await this.save(sessionID);
@@ -309,6 +324,20 @@ export class SessionBrowser {
   }
 
   async run(command) {
+    const sessionID = command.sessionID;
+    this.working.set(sessionID, (this.working.get(sessionID) || 0) + 1);
+    try {
+      await this.refreshGroupTitle(sessionID);
+      return await this.runTracked(command);
+    } finally {
+      const remaining = (this.working.get(sessionID) || 1) - 1;
+      if (remaining) this.working.set(sessionID, remaining);
+      else this.working.delete(sessionID);
+      await this.refreshGroupTitle(sessionID);
+    }
+  }
+
+  async runTracked(command) {
     // Stop controls must be able to interrupt pending attachment/capture rather than queue behind it.
     if (['cancel_recording', 'stop_inspection'].includes(command.tool))
       return this.execute(command);
@@ -320,6 +349,14 @@ export class SessionBrowser {
       throw new Error('A click is already in progress for this tab.');
     return this.serial(this.sessionWork, command.sessionID, async () => {
       const binding = this.assert(command);
+      if (typeof command.args?.sessionTitle === 'string') {
+        const title = command.args.sessionTitle
+          .replace(/[\p{Cc}\p{Cf}]/gu, '')
+          .trim()
+          .slice(0, 120);
+        if (title) binding.sessionTitle = title;
+        await this.refreshGroupTitle(command.sessionID);
+      }
       binding.lastActivity = Date.now();
       await this.save(command.sessionID);
       try {

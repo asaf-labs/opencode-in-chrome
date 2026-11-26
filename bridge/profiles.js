@@ -1,6 +1,7 @@
 import { BrowserHub } from './hub.js';
 import { validateProfile, readProfileState, writeProfileState } from './profile-store.js';
 import { ProfileConnector } from './profile-connector.js';
+import { resolveSessionTitle } from './session-title.js';
 
 function scopedResult(result, profileID) {
   if (!result || typeof result !== 'object') return result;
@@ -41,8 +42,13 @@ export class ProfileHub {
   writing = Promise.resolve();
   persistenceError = null;
 
-  constructor({ state = { profiles: [], selections: {} }, save = async () => {} } = {}) {
+  constructor({
+    state = { profiles: [], selections: {} },
+    save = async () => {},
+    sessionTitle = async () => undefined,
+  } = {}) {
     this.save = save;
+    this.sessionTitle = sessionTitle;
     for (const profile of state.profiles)
       this.profiles.set(profile.id, { ...profile, hub: this.browserHub(profile.id) });
     this.selections = new Map(Object.entries(state.selections));
@@ -270,6 +276,10 @@ export class ProfileHub {
         );
       const input = { ...args };
       delete input.profileID;
+      if (['open_tab', 'list_tabs'].includes(tool)) {
+        const title = await this.sessionTitle(sessionID);
+        if (title) input.sessionTitle = title;
+      }
       for (const field of ['ref', 'focusToken']) {
         if (!input[field]) continue;
         const match = /^p([^:]+):(.+)$/.exec(input[field]);
@@ -295,6 +305,7 @@ export async function createProfileHub(url) {
   const hub = new ProfileHub({
     state: await readProfileState(url),
     save: (state) => writeProfileState(url, state),
+    sessionTitle: resolveSessionTitle,
   });
   hub.connector = new ProfileConnector(hub, {
     mappingURL: url ? new URL('./profile-launchers.json', url) : undefined,

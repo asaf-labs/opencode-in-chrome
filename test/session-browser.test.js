@@ -115,12 +115,35 @@ test('owned tabs get orange groups per session; personal tabs remain unmarked', 
   assert.equal(chrome.tabState.get(b.tabID).groupId, firstGroup);
   assert.notEqual(chrome.tabState.get(c.tabID).groupId, firstGroup);
   assert.equal(chrome.groupState.get(firstGroup).color, 'orange');
-  assert.match(chrome.groupState.get(firstGroup).title, /OpenCode/);
+  assert.equal(chrome.groupState.get(firstGroup).title, '⚪ es_one');
   assert.equal(chrome.tabState.get(1).groupId, undefined);
   browser.enabled = false;
   await browser.refreshIndicators();
   assert.equal(chrome.groupState.get(firstGroup).color, 'grey');
   assert.equal(chrome.scriptCalls.at(-1).args[0], false);
+});
+
+test('group titles show conversation names and settle to idle after success or failure without expanding groups', async () => {
+  const { browser, chrome, command } = fixture();
+  const tab = await browser.run(command('open_tab', { sessionTitle: 'Fix invoice upload' }));
+  const groupID = chrome.tabState.get(tab.tabID).groupId;
+  await chrome.tabGroups.update(groupID, { collapsed: true });
+  const execute = browser.execute.bind(browser);
+  browser.execute = async (request) => {
+    assert.equal(chrome.groupState.get(groupID).title, '🟠 Fix invoice upload');
+    return execute(request);
+  };
+  await browser.run(command('list_tabs'));
+  assert.equal(chrome.groupState.get(groupID).title, '⚪ Fix invoice upload');
+  await assert.rejects(
+    browser.run(command('navigate', { tabID: 1, url: 'https://example.com' })),
+    /does not own/,
+  );
+  assert.equal(chrome.groupState.get(groupID).title, '⚪ Fix invoice upload');
+  assert.equal(chrome.groupState.get(groupID).collapsed, true);
+  const restarted = new SessionBrowser(chrome);
+  await restarted.restore(structuredClone(browser.bindings));
+  assert.equal(restarted.groupTitle('ses_one'), '⚪ Fix invoice upload');
 });
 
 test('navigation completion installs the control overlay only on owned tabs', async () => {
